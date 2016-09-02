@@ -2,34 +2,25 @@
 
 include config.mk
 
-all: options quark
-
-options:
-	@echo quark build options:
-	@echo "CFLAGS   = ${CFLAGS}"
-	@echo "LDFLAGS  = ${LDFLAGS}"
-	@echo "CC       = ${CC}"
+all: quark
 
 quark: quark.o config.h config.mk
-	@echo CC -o $@
-	@${CC} -o $@ quark.o ${LDFLAGS}
+	${CC} -o $@ quark.o ${LDFLAGS}
 
 quark.o: quark.c config.h config.mk
-	@echo CC -c quark.c
-	@${CC} -c ${CFLAGS} quark.c
+	${CC} -c ${CFLAGS} quark.c
 
 config.h:
 	@echo creating $@ from config.def.h
 	@cp config.def.h $@
 
 clean:
-	@echo cleaning
-	@rm -f quark quark.o quark-${VERSION}.tar.gz
+	rm -f quark quark.o quark-${VERSION}.tar.gz
 
 dist: clean
 	@echo creating dist tarball
 	@mkdir -p quark-${VERSION}
-	@cp -R LICENSE Makefile arg.h config.h config.mk quark.1 quark.c quark-${VERSION}
+	@cp -R LICENSE Makefile arg.h config.def.h config.mk quark.1 quark.c quark-${VERSION}
 	@tar -cf quark-${VERSION}.tar quark-${VERSION}
 	@gzip quark-${VERSION}.tar
 	@rm -rf quark-${VERSION}
@@ -45,9 +36,7 @@ install: all
 	@chmod 644 ${DESTDIR}${MANPREFIX}/man1/quark.1
 
 uninstall:
-	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
-	@rm -f ${DESTDIR}${PREFIX}/bin/quark
-	@echo removing manual from ${DESTDIR}${MANPREFIX}/man1
-	@rm -f ${DESTDIR}${MANPREFIX}/man1/quark.1
+	rm -f ${DESTDIR}${PREFIX}/bin/quark
+	rm -f ${DESTDIR}${MANPREFIX}/man1/quark.1
 
 .PHONY: all options clean dist install uninstall
