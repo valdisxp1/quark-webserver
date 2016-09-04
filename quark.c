@@ -30,18 +30,32 @@ char *argv0;
 
 #include "config.h"
 
-static char *status[] = {
-	[200] = "OK",
-	[206] = "Partial Content",
-	[301] = "Moved Permanently",
-	[400] = "Bad Request",
-	[403] = "Forbidden",
-	[404] = "Not Found",
-	[405] = "Method Not Allowed",
-	[408] = "Request Time-out",
-	[431] = "Request Header Fields Too Large",
-	[500] = "Internal Server Error",
-	[505] = "HTTP Version not supported",
+enum stati {
+	S_OK                    = 200,
+	S_PARTIAL_CONTENT       = 206,
+	S_MOVED_PERMANENTLY     = 301,
+	S_BAD_REQUEST           = 400,
+	S_FORBIDDEN             = 403,
+	S_NOT_FOUND             = 404,
+	S_METHOD_NOT_ALLOWED    = 405,
+	S_REQUEST_TIMEOUT       = 408,
+	S_REQUEST_TOO_LARGE     = 431,
+	S_INTERNAL_SERVER_ERROR = 500,
+	S_VERSION_NOT_SUPPORTED = 505,
+};
+
+static char *statistr[] = {
+	[S_OK]                    = "OK",
+	[S_PARTIAL_CONTENT]       = "Partial Content",
+	[S_MOVED_PERMANENTLY]     = "Moved Permanently",
+	[S_BAD_REQUEST]           = "Bad Request",
+	[S_FORBIDDEN]             = "Forbidden",
+	[S_NOT_FOUND]             = "Not Found",
+	[S_METHOD_NOT_ALLOWED]    = "Method Not Allowed",
+	[S_REQUEST_TIMEOUT]       = "Request Time-out",
+	[S_REQUEST_TOO_LARGE]     = "Request Header Fields Too Large",
+	[S_INTERNAL_SERVER_ERROR] = "Internal Server Error",
+	[S_VERSION_NOT_SUPPORTED] = "HTTP Version not supported",
 
 };
 
@@ -61,7 +75,7 @@ timestamp(time_t t)
 }
 
 static int
-sendstatus(int code, int fd, ...)
+sendstatus(enum stati code, int fd, ...)
 {
 	va_list ap;
 	char buf[4096];
@@ -70,13 +84,13 @@ sendstatus(int code, int fd, ...)
 	long lower, upper, size;
 
 	buflen = snprintf(buf, 4096, "HTTP/1.1 %d %s\r\n", code,
-	                  status[code]);
+	                  statistr[code]);
 
 	buflen += snprintf(buf + buflen, 4096 - buflen, "Date: %s\r\n",
 	                   timestamp(0));
 	va_start(ap, fd);
 	switch (code) {
-	case 200: /* arg-list: mime, size */
+	case S_OK: /* arg-list: mime, size */
 		buflen += snprintf(buf + buflen, 4096 - buflen,
 		                   "Content-Type: %s\r\n",
 		                   va_arg(ap, char *));
@@ -86,7 +100,7 @@ sendstatus(int code, int fd, ...)
 					   size);
 		}
 		break;
-	case 206: /* arg-list: mime, lower, upper, size */
+	case S_PARTIAL_CONTENT: /* arg-list: mime, lower, upper, size */
 		buflen += snprintf(buf + buflen, 4096 - buflen,
 		                   "Content-Type: %s\r\n",
 		                   va_arg(ap, char *));
@@ -100,7 +114,7 @@ sendstatus(int code, int fd, ...)
 		                   "Content-Length: %ld\r\n",
 		                   (upper - lower) + 1);
 		break;
-	case 301: /* arg-list: host, url */
+	case S_MOVED_PERMANENTLY: /* arg-list: host, url */
 		if (!strcmp(port, "80")) {
 			buflen += snprintf(buf + buflen, 4096 - buflen,
 		                           "Location: http://%s%s\r\n",
@@ -113,9 +127,11 @@ sendstatus(int code, int fd, ...)
 			                   va_arg(ap, char *));
 		}
 		break;
-	case 405: /* arg-list: none */
+	case S_METHOD_NOT_ALLOWED: /* arg-list: none */
 		buflen += snprintf(buf + buflen, 4096 - buflen,
 		                   "Allow: GET\r\n");
+		break;
+	default:
 		break;
 	}
 	va_end(ap);
@@ -123,22 +139,22 @@ sendstatus(int code, int fd, ...)
 	buflen += snprintf(buf + buflen, 4096 - buflen,
 	                   "Connection: close\r\n");
 
-	if (code != 200 && code != 206) {
+	if (code != S_OK && code != S_PARTIAL_CONTENT) {
 		buflen += snprintf(buf + buflen, 4096 - buflen,
 		                   "Content-Type: text/html\r\n");
 		buflen += snprintf(buf + buflen, 4096 - buflen,
 	                           "\r\n<!DOCTYPE html>\r\n<html>\r\n"
 	                           "\t<head><title>%d %s</title></head>"
 				   "\r\n\t<body><h1>%d %s</h1></body>\r\n"
-				   "</html>\r\n", code, status[code],
-				   code, status[code]);
+				   "</html>\r\n", code, statistr[code],
+				   code, statistr[code]);
 	} else {
 		buflen += snprintf(buf + buflen, 4096 - buflen, "\r\n");
 	}
 
 	for (written = 0; buflen > 0; written += ret, buflen -= ret) {
 		if ((ret = write(fd, buf + written, buflen)) < 0) {
-			code = 408;
+			code = S_REQUEST_TIMEOUT;
 			break;
 		}
 	}
@@ -197,9 +213,9 @@ listdir(char *dir, int fd)
 	int dirlen, ret, i;
 
 	if ((dirlen = scandir(dir, &e, NULL, alphasort)) < 0) {
-		return sendstatus(403, fd);
+		return sendstatus(S_FORBIDDEN, fd);
 	}
-	if ((ret = sendstatus(200, fd, "text/html", (long)-1)) != 200) {
+	if ((ret = sendstatus(S_OK, fd, "text/html", (long)-1)) != S_OK) {
 		return ret;
 	}
 	if ((buflen = snprintf(buf, sizeof(buf), "<!DOCTYPE html>\r\n"
@@ -207,12 +223,12 @@ listdir(char *dir, int fd)
 	                       "</title></head>\r\n<body>\r\n"
 	                       "<a href=\"..\">..</a><br />\r\n",
 	                       dir)) >= sizeof(buf)) {
-		return 500;
+		return S_INTERNAL_SERVER_ERROR;
 	}
 	written = 0;
 	while (buflen > 0) {
 		if ((bread = write(fd, buf + written, buflen)) < 0) {
-			return 408;
+			return S_REQUEST_TIMEOUT;
 		}
 		written += bread;
 		buflen -= bread;
@@ -225,12 +241,12 @@ listdir(char *dir, int fd)
 		if ((buflen = snprintf(buf, sizeof(buf), "<a href=\"%s"
 		                       "\">%s</a><br />\r\n", e[i]->d_name,
 		                       e[i]->d_name)) >= sizeof(buf)) {
-			return 500;
+			return S_INTERNAL_SERVER_ERROR;
 		}
 		written = 0;
 		while (buflen > 0) {
 			if ((bread = write(fd, buf + written, buflen)) < 0) {
-				return 408;
+				return S_REQUEST_TIMEOUT;
 			}
 			written += bread;
 			buflen -= bread;
@@ -239,18 +255,18 @@ listdir(char *dir, int fd)
 
 	if ((buflen = snprintf(buf, sizeof(buf), "\r\n</body></html>\r\n"))
 	    >= sizeof(buf)) {
-		return 500;
+		return S_INTERNAL_SERVER_ERROR;
 	}
 	written = 0;
 	while (buflen > 0) {
 		if ((bread = write(fd, buf + written, buflen)) < 0) {
-			return 408;
+			return S_REQUEST_TIMEOUT;
 		}
 		written += bread;
 		buflen -= bread;
 	}
 
-	return 200;
+	return S_OK;
 }
 
 static int
@@ -271,7 +287,7 @@ handle(int infd, char **url)
 	/* get request header */
 	for (reqlen = 0; ;) {
 		if ((off = read(infd, req + reqlen, MAXREQLEN - reqlen)) < 0) {
-			return sendstatus(408, infd);
+			return sendstatus(S_REQUEST_TIMEOUT, infd);
 		} else if (off == 0) {
 			break;
 		}
@@ -280,49 +296,49 @@ handle(int infd, char **url)
 			break;
 		}
 		if (reqlen == MAXREQLEN) {
-			return sendstatus(431, infd);
+			return sendstatus(S_REQUEST_TOO_LARGE, infd);
 		}
 	}
 	if (reqlen < 2) {
-		return sendstatus(400, infd);
+		return sendstatus(S_BAD_REQUEST, infd);
 	}
 	reqlen -= 2; /* remove last \r\n */
 	req[reqlen] = '\0'; /* make it safe */
 
 	/* parse request line */
 	if (reqlen < 3) {
-		return sendstatus(400, infd);
+		return sendstatus(S_BAD_REQUEST, infd);
 	} else if (strncmp(req, "GET", sizeof("GET") - 1)) {
-		return sendstatus(405, infd);
+		return sendstatus(S_METHOD_NOT_ALLOWED, infd);
 	} else if (req[3] != ' ') {
-		return sendstatus(400, infd);
+		return sendstatus(S_BAD_REQUEST, infd);
 	}
 	for (p = req + sizeof("GET ") - 1; *p && *p != ' '; p++)
 		;
 	if (!*p) {
-		return sendstatus(400, infd);
+		return sendstatus(S_BAD_REQUEST, infd);
 	}
 	*p = '\0';
 	if (snprintf(urlenc, sizeof(urlenc), "%s",
 	    req + sizeof("GET ") - 1) >= sizeof(urlenc)) {
-		return sendstatus(400, infd);
+		return sendstatus(S_BAD_REQUEST, infd);
 	}
 	*url = urldecnorm;
 	if (!strlen(urlenc)) {
-		return sendstatus(400, infd);
+		return sendstatus(S_BAD_REQUEST, infd);
 	}
 	p += sizeof(" ") - 1;
 	if (strncmp(p, "HTTP/", sizeof("HTTP/") - 1)) {
-		return sendstatus(400, infd);
+		return sendstatus(S_BAD_REQUEST, infd);
 	}
 	p += sizeof("HTTP/") - 1;
 	if (strncmp(p, "1.0", sizeof("1.0") - 1) &&
 	    strncmp(p, "1.1", sizeof("1.1") - 1)) {
-		return sendstatus(505, infd);
+		return sendstatus(S_VERSION_NOT_SUPPORTED, infd);
 	}
 	p += sizeof("1.*") - 1;
 	if (strncmp(p, "\r\n", sizeof("\r\n") - 1)) {
-		return sendstatus(400, infd);
+		return sendstatus(S_BAD_REQUEST, infd);
 	}
 	p += sizeof("\r\n") - 1;
 
@@ -336,7 +352,8 @@ handle(int infd, char **url)
 			}
 			if (snprintf(reqhost, sizeof(reqhost), "%s", p) >=
 			    sizeof(reqhost)) {
-				return sendstatus(500, infd);
+				return sendstatus(S_INTERNAL_SERVER_ERROR,
+				                  infd);
 			}
 		} else if (!strncmp(p, "Range:", sizeof("Range:") - 1)) {
 			p += sizeof("Range:") - 1;
@@ -345,7 +362,8 @@ handle(int infd, char **url)
 			}
 			if (snprintf(range, sizeof(range), "%s", p) >=
 			    sizeof(range)) {
-				return sendstatus(500, infd);
+				return sendstatus(S_INTERNAL_SERVER_ERROR,
+				                  infd);
 			}
 		} else if (!strncmp(p, "If-Modified-Since:",
 		           sizeof("If-Modified-Since:") - 1)) {
@@ -355,7 +373,8 @@ handle(int infd, char **url)
 			}
 			if (snprintf(modsince, sizeof(modsince), "%s", p) >=
 			    sizeof(modsince)) {
-				return sendstatus(500, infd);
+				return sendstatus(S_INTERNAL_SERVER_ERROR,
+				                  infd);
 			}
 		}
 	}
@@ -365,17 +384,18 @@ handle(int infd, char **url)
 	decode(urlenc, urldec);
 	if (!realpath(urldec, urldecnorm)) {
 		/* todo: break up the cases */
-		return sendstatus((errno == EACCES) ? 403 : 404, infd);
+		return sendstatus((errno == EACCES) ? S_FORBIDDEN :
+		                                      S_NOT_FOUND, infd);
 	}
 
 	/* hidden path? */
 	if (urldecnorm[0] == '.' || strstr(urldecnorm, "/.")) {
-		return sendstatus(403, infd);
+		return sendstatus(S_FORBIDDEN, infd);
 	}
 	/* check if file or directory */
 	if (stat(urldecnorm, &st) < 0) {
 		/* todo: break up the cases */
-		return sendstatus(404, infd);
+		return sendstatus(S_NOT_FOUND, infd);
 	}
 	if (S_ISDIR(st.st_mode)) {
 		/* add / at the end, was removed by realpath */
@@ -394,12 +414,12 @@ handle(int infd, char **url)
 			if (snprintf(urldecnormind, sizeof(urldecnormind),
 			             "%s/%s", urldecnorm, docindex) >=
 				     sizeof(urldecnorm)) {
-				return sendstatus(400, infd);
+				return sendstatus(S_BAD_REQUEST, infd);
 			}
 			if (stat(urldecnormind, &st) < 0) {
 				/* no index, serve dir */
 				if (!listdirs) {
-					return sendstatus(403, infd);
+					return sendstatus(S_FORBIDDEN, infd);
 				}
 				return listdir(urldecnorm, infd);
 			}
@@ -410,7 +430,7 @@ handle(int infd, char **url)
 	}
 	if (needredirect) {
 		encode(urldecnorm, urlenc);
-		return sendstatus(301, infd, urlenc,
+		return sendstatus(S_MOVED_PERMANENTLY, infd, urlenc,
 		                  reqhost[0] ? reqhost : host);
 	}
 
@@ -419,11 +439,11 @@ handle(int infd, char **url)
 	upper = LONG_MAX;
 	if (range[0]) {
 		if (strncmp(range, "bytes=", sizeof("bytes=") - 1)) {
-			return sendstatus(400, infd);
+			return sendstatus(S_BAD_REQUEST, infd);
 		}
 		p = range + sizeof("bytes=") - 1;
 		if (!(q = strchr(p, '-'))) {
-			return sendstatus(400, infd);
+			return sendstatus(S_BAD_REQUEST, infd);
 		}
 		*(q++) = '\0';
 		if (p[0]) {
@@ -436,7 +456,7 @@ handle(int infd, char **url)
 
 	/* serve file */
 	if (!(fp = fopen(urldecnorm, "r"))) {
-		return sendstatus(403, infd);
+		return sendstatus(S_FORBIDDEN, infd);
 	}
 	mime = "text/plain";
 	if ((p = strrchr(urldecnorm, '.'))) {
@@ -448,22 +468,22 @@ handle(int infd, char **url)
 		}
 	}
 	if (fseek(fp, 0, SEEK_END) || (fsize = ftell(fp)) < 0) {
-		return sendstatus(500, infd);
+		return sendstatus(S_INTERNAL_SERVER_ERROR, infd);
 	}
 	rewind(fp);
 	if (fsize && upper > fsize) {
 		upper = fsize - 1;
 	}
 	if (fseek(fp, lower, SEEK_SET)) {
-		return sendstatus(500, infd);
+		return sendstatus(S_INTERNAL_SERVER_ERROR, infd);
 	}
 	if (!range[0]) {
-		if ((ret = sendstatus(200, infd, mime, (long)fsize)) != 200) {
+		if ((ret = sendstatus(S_OK, infd, mime, (long)fsize)) != S_OK) {
 			return ret;
 		}
 	} else {
-		if ((ret = sendstatus(206, infd, mime, lower,
-		                      upper, fsize)) != 206) {
+		if ((ret = sendstatus(S_PARTIAL_CONTENT, infd, mime, lower,
+		                      upper, fsize)) != S_PARTIAL_CONTENT) {
 			return ret;
 		}
 	}
@@ -472,20 +492,20 @@ handle(int infd, char **url)
 	                     fp))) {
 		remaining -= buflen;
 		if (buflen < 0) {
-			return 500;
+			return S_INTERNAL_SERVER_ERROR;
 		}
 		p = buf;
 		while (buflen > 0) {
 			written = write(infd, p, buflen);
 			if (written <= 0) {
-				return 408;
+				return S_REQUEST_TIMEOUT;
 			}
 			buflen -= written;
 			p += written;
 		}
 	}
 
-	return 200;
+	return S_OK;
 }
 
 static void
@@ -496,11 +516,13 @@ serve(int insock)
 	pid_t p;
 	socklen_t in_sa_len;
 	time_t t;
-	int infd, status;
+	enum stati status;
+	int infd;
 	char inip4[INET_ADDRSTRLEN], inip6[INET6_ADDRSTRLEN], *url = "",
 	     tstmp[25];
 
 	while (1) {
+		/* accept incoming connections */
 		in_sa_len = sizeof(in_sa);
 		if ((infd = accept(insock, (struct sockaddr *)&in_sa,
 		                   &in_sa_len)) < 0) {
@@ -517,7 +539,7 @@ serve(int insock)
 		case 0:
 			close(insock);
 
-			/* timeouts */
+			/* set connection timeout */
 			tv.tv_sec = 30;
 			tv.tv_usec = 0;
 			if (setsockopt(infd, SOL_SOCKET, SO_RCVTIMEO, &tv,
@@ -531,7 +553,7 @@ serve(int insock)
 
 			status = handle(infd, &url);
 
-			/* log */
+			/* write output to log */
 			t = time(NULL);
 			strftime(tstmp, sizeof(tstmp), "%Y-%m-%dT%H:%M:%S",
 			         gmtime(&t));
@@ -548,10 +570,11 @@ serve(int insock)
 				printf("%s\t%s\t%d\t%s\n", tstmp, inip6, status, url);
 			}
 
+			/* clean up and finish */
 			shutdown(infd, SHUT_RD);
 			shutdown(infd, SHUT_WR);
 			close(infd);
-			_exit(EXIT_SUCCESS);
+			_exit(0);
 		default:
 			close(infd);
 		}
