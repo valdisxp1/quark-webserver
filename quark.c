@@ -641,9 +641,8 @@ getusock(char *udsname)
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: %s [-v] [[[-h host] [-p port]] | "
-	        "[-U udsocket]] [-d dir] [-u user] [-g group]\n", argv0);
-	exit(1);
+	die("usage: %s [-v] [[[-h host] [-p port]] | [-U udsocket]] "
+	    "[-d dir] [-u user] [-g group]\n", argv0);
 }
 
 int
