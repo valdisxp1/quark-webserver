@@ -56,7 +56,6 @@ static char *statistr[] = {
 	[S_REQUEST_TOO_LARGE]     = "Request Header Fields Too Large",
 	[S_INTERNAL_SERVER_ERROR] = "Internal Server Error",
 	[S_VERSION_NOT_SUPPORTED] = "HTTP Version not supported",
-
 };
 
 #undef MIN
@@ -83,52 +82,52 @@ sendstatus(enum stati code, int fd, ...)
 	ssize_t ret;
 	long lower, upper, size;
 
-	buflen = snprintf(buf, 4096, "HTTP/1.1 %d %s\r\n", code,
+	buflen = snprintf(buf, sizeof(buf), "HTTP/1.1 %d %s\r\n", code,
 	                  statistr[code]);
 
-	buflen += snprintf(buf + buflen, 4096 - buflen, "Date: %s\r\n",
-	                   timestamp(0));
+	buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
+	                   "Date: %s\r\n", timestamp(0));
 	va_start(ap, fd);
 	switch (code) {
 	case S_OK: /* arg-list: mime, size */
-		buflen += snprintf(buf + buflen, 4096 - buflen,
+		buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 		                   "Content-Type: %s\r\n",
 		                   va_arg(ap, char *));
 		if ((size = va_arg(ap, long)) >= 0) {
-			buflen += snprintf(buf + buflen, 4096 - buflen,
+			buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 			                   "Content-Length: %ld\r\n",
 					   size);
 		}
 		break;
 	case S_PARTIAL_CONTENT: /* arg-list: mime, lower, upper, size */
-		buflen += snprintf(buf + buflen, 4096 - buflen,
+		buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 		                   "Content-Type: %s\r\n",
 		                   va_arg(ap, char *));
 		lower = va_arg(ap, long);
 		upper = va_arg(ap, long);
 		size = va_arg(ap, long);
-		buflen += snprintf(buf + buflen, 4096 - buflen,
+		buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 		                   "Content-Range: bytes %ld-%ld/%ld\r\n",
 		                   lower, upper, size);
-		buflen += snprintf(buf + buflen, 4096 - buflen,
+		buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 		                   "Content-Length: %ld\r\n",
 		                   (upper - lower) + 1);
 		break;
 	case S_MOVED_PERMANENTLY: /* arg-list: host, url */
 		if (!strcmp(port, "80")) {
-			buflen += snprintf(buf + buflen, 4096 - buflen,
+			buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 		                           "Location: http://%s%s\r\n",
 				           va_arg(ap, char *),
 			                   va_arg(ap, char *));
 		} else {
-			buflen += snprintf(buf + buflen, 4096 - buflen,
+			buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 		                           "Location: http://%s:%s%s\r\n",
 				           va_arg(ap, char *), port,
 			                   va_arg(ap, char *));
 		}
 		break;
 	case S_METHOD_NOT_ALLOWED: /* arg-list: none */
-		buflen += snprintf(buf + buflen, 4096 - buflen,
+		buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 		                   "Allow: GET\r\n");
 		break;
 	default:
@@ -136,20 +135,20 @@ sendstatus(enum stati code, int fd, ...)
 	}
 	va_end(ap);
 
-	buflen += snprintf(buf + buflen, 4096 - buflen,
+	buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 	                   "Connection: close\r\n");
 
 	if (code != S_OK && code != S_PARTIAL_CONTENT) {
-		buflen += snprintf(buf + buflen, 4096 - buflen,
+		buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 		                   "Content-Type: text/html\r\n");
-		buflen += snprintf(buf + buflen, 4096 - buflen,
+		buflen += snprintf(buf + buflen, sizeof(buf) - buflen,
 	                           "\r\n<!DOCTYPE html>\r\n<html>\r\n"
 	                           "\t<head><title>%d %s</title></head>"
 				   "\r\n\t<body><h1>%d %s</h1></body>\r\n"
 				   "</html>\r\n", code, statistr[code],
 				   code, statistr[code]);
 	} else {
-		buflen += snprintf(buf + buflen, 4096 - buflen, "\r\n");
+		buflen += snprintf(buf + buflen, sizeof(buf) - buflen, "\r\n");
 	}
 
 	for (written = 0; buflen > 0; written += ret, buflen -= ret) {
