@@ -694,7 +694,7 @@ main(int argc, char *argv[])
 	/* raise the process limit */
 	rlim.rlim_cur = rlim.rlim_max = maxnprocs;
 	if (setrlimit(RLIMIT_NPROC, &rlim) < 0) {
-		fprintf(stderr, "%s: setrlimit RLIMIT_NPROC: %s", argv0,
+		fprintf(stderr, "%s: setrlimit RLIMIT_NPROC: %s\n", argv0,
 		        strerror(errno));
 		return 1;
 	}
