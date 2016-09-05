@@ -172,7 +172,7 @@ decode(char src[PATH_MAX], char dest[PATH_MAX])
 		if (*s == '+') {
 			dest[i] = ' ';
 		} else if (*s == '%' && (sscanf(s + 1, "%2hhx", &n) == 1)) {
-			dest[i] = (char)(n & 255);
+			dest[i] = n;
 			s += 2;
 		} else {
 			dest[i] = *s;
@@ -191,7 +191,7 @@ encode(char src[PATH_MAX], char dest[PATH_MAX])
 
 	for (s = src, i = 0; *s; s++) {
 		if (isalnum(*s) || *s == '~' || *s == '-' || *s == '.' ||
-		    *s == '_') {
+		    *s == '_' || *s > 127) {
 			i += snprintf(dest + i, PATH_MAX - i, "%%%02X", *s);
 		} else {
 			dest[i] = *s;
