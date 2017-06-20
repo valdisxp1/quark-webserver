@@ -1,4 +1,4 @@
-static const char *host      = "127.0.0.1";
+static const char *host      = "localhost";
 static const char *port      = "80";
 static const char *servedir  = ".";
 static const char *docindex  = "index.html";
@@ -7,7 +7,8 @@ static const char *user      = "nobody";
 static const char *group     = "nogroup";
 static const int   maxnprocs = 512;
 
-#define MAXREQLEN 4096 /* >= 4 */
+#define HEADER_MAX 4096
+#define FIELD_MAX  200
 
 static const struct {
 	char *ext;

@@ -5,16 +5,12 @@ VERSION = 0
 
 # paths
 PREFIX = /usr/local
-MANPREFIX = ${PREFIX}/share/man
-
-# includes and libs
-INCS = -I. -I/usr/include
-LIBS = -L/usr/lib -lc
+MANPREFIX = $(PREFIX)/man
 
 # flags
-CPPFLAGS = -DVERSION=\"${VERSION}\" -D_DEFAULT_SOURCE
-CFLAGS = -g -std=c99 -pedantic -Wall -Os ${INCS} ${CPPFLAGS}
-LDFLAGS = ${LIBS}
+CPPFLAGS = -DVERSION=\"$(VERSION)\" -D_DEFAULT_SOURCE -D_XOPEN_SOURCE
+CFLAGS   = -std=c99 -pedantic -Wall -Os
+LDFLAGS  = -s
 
 # compiler and linker
 CC = cc
