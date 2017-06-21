@@ -460,8 +460,8 @@ static int
 normabspath(char *path)
 {
 	size_t len;
-	int done = 0;
-	char *p, *q, *lastp;
+	int last = 0;
+	char *p, *q;
 
 	/* require and skip first slash */
 	if (path[0] != '/') {
@@ -472,25 +472,37 @@ normabspath(char *path)
 	/* get length of path */
 	len = strlen(p);
 
-	for (lastp = p; !done; ) {
+	for (; !last; ) {
 		/* bound path component within (p,q) */
 		if (!(q = strchr(p, '/'))) {
 			q = strchr(p, '\0');
-			done = 1;
+			last = 1;
 		}
 
 		if (p == q || (q - p == 1 && p[0] == '.')) {
 			/* "/" or "./" */
-			memcpy(p, q + 1, len - ((q + 1) - path) + 2);
-			len -= (q + 1) - p;
+			goto squash;
 		} else if (q - p == 2 && p[0] == '.' && p[1] == '.') {
 			/* "../" */
-			memcpy(lastp, q + 1, len - ((q + 1) - path) + 2);
-			len -= (q + 1) - lastp;
-			p = lastp;
+			if (p != path + 1) {
+				/* place p right after the previous / */
+				for (p -= 2; p > path && *p != '/'; p--);
+				p++;
+			}
+			goto squash;
 		} else {
-			lastp = p;
+			/* move on */
 			p = q + 1;
+			continue;
+		}
+squash:
+		/* squash (p,q) into void */
+		if (last) {
+			*p = '\0';
+			len = p - path;
+		} else {
+			memcpy(p, q + 1, len - ((q + 1) - path) + 2);
+			len -= (q + 1) - p;
 		}
 	}
 
