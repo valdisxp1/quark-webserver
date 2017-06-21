@@ -463,7 +463,7 @@ normabspath(char *path)
 	int done = 0;
 	char *p, *q, *lastp;
 
-	/* force and skip first slash */
+	/* require and skip first slash */
 	if (path[0] != '/') {
 		return 1;
 	}
