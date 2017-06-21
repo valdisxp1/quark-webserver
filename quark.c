@@ -160,42 +160,28 @@ encode(char src[PATH_MAX], char dest[PATH_MAX])
 	return 0;
 }
 
-static int
-sendbuffer(int fd, char *buf, size_t buflen) {
-	size_t written;
-	ssize_t off;
-
-	for (written = 0; buflen > 0; written += off, buflen -= off) {
-		if ((off = write(fd, buf + written, buflen)) < 0) {
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
 static enum status
 sendstatus(int fd, enum status s)
 {
-	static char res[4096], t[TIMESTAMP_LEN];
-	size_t len;
+	static char t[TIMESTAMP_LEN];
 
-	/* assemble error response */
-	len = snprintf(res, sizeof(res),
-	               "HTTP/1.1 %d %s\r\n"
-	               "Date: %s\r\n"
-	               "Connection: close\r\n"
-	               "%s"
-	               "Content-Type: text/html\r\n"
-	               "\r\n"
-	               "<!DOCTYPE html>\n<html>\n\t<head>\n"
-	               "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
-	               "\t\t<h1>%d %s</h1>\n\t</body>\n</html>",
-	               s, status_str[s], timestamp(0, t),
-	               (s == S_METHOD_NOT_ALLOWED) ? "Allow: HEAD, GET\r\n" : "",
-	               s, status_str[s], s, status_str[s]);
+	if (dprintf(fd,
+	            "HTTP/1.1 %d %s\r\n"
+	            "Date: %s\r\n"
+	            "Connection: close\r\n"
+	            "%s"
+	            "Content-Type: text/html\r\n"
+	            "\r\n"
+	            "<!DOCTYPE html>\n<html>\n\t<head>\n"
+	            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
+	            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>",
+	            s, status_str[s], timestamp(0, t),
+	            (s == S_METHOD_NOT_ALLOWED) ? "Allow: HEAD, GET\r\n" : "",
+	            s, status_str[s], s, status_str[s]) < 0) {
+		return S_REQUEST_TIMEOUT;
+	}
 
-	return sendbuffer(fd, res, len) ? S_REQUEST_TIMEOUT : s;
+	return s;
 }
 
 static int
@@ -347,9 +333,9 @@ static enum status
 senddir(int fd, char *name, struct request *r)
 {
 	struct dirent **e;
-	size_t len, i;
+	size_t i;
 	int dirlen;
-	static char resheader[HEADER_MAX], buf[BUFSIZ], t[TIMESTAMP_LEN];
+	static char t[TIMESTAMP_LEN];
 
 	/* read directory */
 	if ((dirlen = scandir(name, &e, NULL, alphasort)) < 0) {
@@ -357,28 +343,23 @@ senddir(int fd, char *name, struct request *r)
 	}
 
 	/* send header as late as possible */
-	len = snprintf(resheader, sizeof(resheader),
-	               "HTTP/1.1 %d %s\r\n"
-	               "Date: %s\r\n"
-	               "Connection: close\r\n"
-		       "Content-Type: text/html\r\n"
-		       "\r\n",
-	               S_OK, status_str[S_OK], timestamp(0, t));
-
-	if (sendbuffer(fd, resheader, len)) {
+	if (dprintf(fd,
+	            "HTTP/1.1 %d %s\r\n"
+	            "Date: %s\r\n"
+	            "Connection: close\r\n"
+		    "Content-Type: text/html\r\n"
+		    "\r\n",
+	            S_OK, status_str[S_OK], timestamp(0, t)) < 0) {
 		return S_REQUEST_TIMEOUT;
 	}
 
 	if (r->method == M_GET) {
 		/* listing header */
-		if ((len = snprintf(buf, sizeof(buf),
-		                    "<!DOCTYPE html>\n<html>\n\t<head>"
-		                    "<title>Index of %s</title></head>\n"
-		                    "\t<body>\n\t\t<a href=\"..\">..</a>",
-		                    name)) >= sizeof(buf)) {
-			return S_INTERNAL_SERVER_ERROR;
-		}
-		if (sendbuffer(fd, buf, len)) {
+		if (dprintf(fd,
+		            "<!DOCTYPE html>\n<html>\n\t<head>"
+		            "<title>Index of %s</title></head>\n"
+		            "\t<body>\n\t\t<a href=\"..\">..</a>",
+		            name) < 0) {
 			return S_REQUEST_TIMEOUT;
 		}
 
@@ -390,20 +371,14 @@ senddir(int fd, char *name, struct request *r)
 			}
 
 			/* entry line */
-			if ((len = snprintf(buf, sizeof(buf),
-			                    "<br />\n\t\t<a href=\"%s\">%s</a>",
-			                    e[i]->d_name, e[i]->d_name))
-			    >= sizeof(buf)) {
-				return S_INTERNAL_SERVER_ERROR;
-			}
-			if (sendbuffer(fd, buf, len)) {
+			if (dprintf(fd, "<br />\n\t\t<a href=\"%s\">%s</a>",
+			            e[i]->d_name, e[i]->d_name) < 0) {
 				return S_REQUEST_TIMEOUT;
 			}
 		}
 
 		/* listing footer */
-		if (sendbuffer(fd, "\n\t</body>\n</html>",
-		               sizeof("\n\t</body>\n</html>") - 1)) {
+		if (dprintf(fd, "\n\t</body>\n</html>") < 0) {
 			return S_REQUEST_TIMEOUT;
 		}
 	}
@@ -417,12 +392,10 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 {
 	FILE *fp;
 	enum status s;
-	size_t len;
 	ssize_t bread, bwritten;
 	off_t remaining;
 	int range;
-	static char resheader[HEADER_MAX], buf[BUFSIZ], *p, t1[TIMESTAMP_LEN],
-	            t2[TIMESTAMP_LEN];
+	static char buf[BUFSIZ], *p, t1[TIMESTAMP_LEN], t2[TIMESTAMP_LEN];
 
 	/* open file */
 	if (!(fp = fopen(name, "r"))) {
@@ -438,23 +411,24 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 	range = r->field[REQ_RANGE][0];
 	s = range ? S_PARTIAL_CONTENT : S_OK;
 
-	len = snprintf(resheader, sizeof(resheader),
-	               "HTTP/1.1 %d %s\r\n"
-	               "Date: %s\r\n"
-	               "Connection: close\r\n"
-		       "Last-Modified: %s\r\n"
-		       "Content-Type: %s\r\n"
-		       "Content-Length: %zu\r\n",
-	               s, status_str[s], timestamp(0, t1),
-		       timestamp(st->st_mtim.tv_sec, t2), mime, upper - lower);
-	if (range) {
-		len += snprintf(resheader + len, sizeof(resheader) - len,
-		                "Content-Range: bytes %zu-%zu/%zu\r\n",
-		                lower, upper - 1, st->st_size);
+	if (dprintf(fd,
+	            "HTTP/1.1 %d %s\r\n"
+	            "Date: %s\r\n"
+	            "Connection: close\r\n"
+		    "Last-Modified: %s\r\n"
+		    "Content-Type: %s\r\n"
+		    "Content-Length: %zu\r\n",
+	            s, status_str[s], timestamp(0, t1),
+		    timestamp(st->st_mtim.tv_sec, t2), mime, upper - lower) < 0) {
+		return S_REQUEST_TIMEOUT;
 	}
-	len += snprintf(resheader + len, sizeof(resheader) - len, "\r\n");
-
-	if (sendbuffer(fd, resheader, len)) {
+	if (range) {
+		if (dprintf(fd, "Content-Range: bytes %zu-%zu/%zu\r\n",
+		            lower, upper - 1, st->st_size) < 0) {
+			return S_REQUEST_TIMEOUT;
+		}
+	}
+	if (dprintf(fd, "\r\n") < 0) {
 		return S_REQUEST_TIMEOUT;
 	}
 
@@ -489,8 +463,7 @@ sendresponse(int fd, struct request *r)
 	struct tm tm;
 	size_t len, i;
 	off_t lower, upper;
-	static char realtarget[PATH_MAX], resheader[HEADER_MAX],
-	            tmptarget[PATH_MAX], t[TIMESTAMP_LEN];
+	static char realtarget[PATH_MAX], tmptarget[PATH_MAX], t[TIMESTAMP_LEN];
 	char *p, *q, *mime;
 
 	/* check method */
@@ -530,17 +503,19 @@ sendresponse(int fd, struct request *r)
 		/* encode realtarget */
 		encode(realtarget, tmptarget);
 
-		len = snprintf(resheader, sizeof(resheader),
-		               "HTTP/1.1 %d %s\r\n"
-		               "Date: %s\r\n"
-		               "Connection: close\r\n"
-		               "Location: %s\r\n"
-		               "\r\n",
-		               S_MOVED_PERMANENTLY,
-		               status_str[S_MOVED_PERMANENTLY], timestamp(0, t),
-		               tmptarget);
-		return sendbuffer(fd, resheader, len) ? S_REQUEST_TIMEOUT :
-		                  S_MOVED_PERMANENTLY;
+		if (dprintf(fd,
+		            "HTTP/1.1 %d %s\r\n"
+		            "Date: %s\r\n"
+		            "Connection: close\r\n"
+		            "Location: %s\r\n"
+		            "\r\n",
+		            S_MOVED_PERMANENTLY,
+		            status_str[S_MOVED_PERMANENTLY], timestamp(0, t),
+		            tmptarget) < 0) {
+			return S_REQUEST_TIMEOUT;
+		}
+
+		return S_MOVED_PERMANENTLY;
 	}
 
 	if (S_ISDIR(st.st_mode)) {
@@ -577,14 +552,13 @@ sendresponse(int fd, struct request *r)
 
 		/* compare with last modification date of the file */
 		if (difftime(st.st_mtim.tv_sec, mktime(&tm)) <= 0) {
-			len = snprintf(resheader, sizeof(resheader),
-			               "HTTP/1.1 %d %s\r\n"
-			               "Date: %s\r\n"
-			               "Connection: close\r\n"
-				       "\r\n",
-			               S_NOT_MODIFIED, status_str[S_NOT_MODIFIED],
-			               timestamp(0, t));
-			if (sendbuffer(fd, resheader, len)) {
+			if (dprintf(fd,
+			            "HTTP/1.1 %d %s\r\n"
+			            "Date: %s\r\n"
+			            "Connection: close\r\n"
+				    "\r\n",
+			            S_NOT_MODIFIED, status_str[S_NOT_MODIFIED],
+			            timestamp(0, t)) < 0) {
 				return S_REQUEST_TIMEOUT;
 			}
 		}
