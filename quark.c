@@ -456,6 +456,47 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 	return s;
 }
 
+static int
+normabspath(char *path)
+{
+	size_t len;
+	int done = 0;
+	char *p, *q, *lastp;
+
+	/* force and skip first slash */
+	if (path[0] != '/') {
+		return 1;
+	}
+	p = path + 1;
+
+	/* get length of path */
+	len = strlen(p);
+
+	for (lastp = p; !done; ) {
+		/* bound path component within (p,q) */
+		if (!(q = strchr(p, '/'))) {
+			q = strchr(p, '\0');
+			done = 1;
+		}
+
+		if (p == q || (q - p == 1 && p[0] == '.')) {
+			/* "/" or "./" */
+			memcpy(p, q + 1, len - ((q + 1) - path) + 2);
+			len -= (q + 1) - p;
+		} else if (q - p == 2 && p[0] == '.' && p[1] == '.') {
+			/* "../" */
+			memcpy(lastp, q + 1, len - ((q + 1) - path) + 2);
+			len -= (q + 1) - lastp;
+			p = lastp;
+		} else {
+			lastp = p;
+			p = q + 1;
+		}
+	}
+
+	return 0;
+}
+
 static enum status
 sendresponse(int fd, struct request *r)
 {
@@ -472,8 +513,9 @@ sendresponse(int fd, struct request *r)
 	}
 
 	/* normalize target */
-	if (!realpath(r->target, realtarget)) {
-		return sendstatus(fd, (errno == EACCES) ? S_FORBIDDEN : S_NOT_FOUND);
+	memcpy(realtarget, r->target, sizeof(realtarget));
+	if (normabspath(realtarget)) {
+		return sendstatus(fd, S_BAD_REQUEST);
 	}
 
 	/* reject hidden target */
