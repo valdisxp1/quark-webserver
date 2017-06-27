@@ -342,7 +342,7 @@ senddir(int fd, char *name, struct request *r)
 {
 	struct dirent **e;
 	size_t i;
-	int dirlen;
+	int dirlen, s;
 	static char t[TIMESTAMP_LEN];
 
 	/* read directory */
@@ -358,7 +358,8 @@ senddir(int fd, char *name, struct request *r)
 		    "Content-Type: text/html\r\n"
 		    "\r\n",
 	            S_OK, status_str[S_OK], timestamp(0, t)) < 0) {
-		return S_REQUEST_TIMEOUT;
+		s = S_REQUEST_TIMEOUT;
+		goto cleanup;
 	}
 
 	if (r->method == M_GET) {
@@ -368,7 +369,8 @@ senddir(int fd, char *name, struct request *r)
 		            "<title>Index of %s</title></head>\n"
 		            "\t<body>\n\t\t<a href=\"..\">..</a>",
 		            name) < 0) {
-			return S_REQUEST_TIMEOUT;
+			s = S_REQUEST_TIMEOUT;
+			goto cleanup;
 		}
 
 		/* listing */
@@ -381,17 +383,25 @@ senddir(int fd, char *name, struct request *r)
 			/* entry line */
 			if (dprintf(fd, "<br />\n\t\t<a href=\"%s\">%s%s</a>",
 			            e[i]->d_name, e[i]->d_name, filetype(e[i]->d_type)) < 0) {
-				return S_REQUEST_TIMEOUT;
+				s = S_REQUEST_TIMEOUT;
+				goto cleanup;
 			}
 		}
 
 		/* listing footer */
 		if (dprintf(fd, "\n\t</body>\n</html>\n") < 0) {
-			return S_REQUEST_TIMEOUT;
+			s = S_REQUEST_TIMEOUT;
+			goto cleanup;
 		}
 	}
+	s = S_OK;
 
-	return S_OK;
+cleanup:
+	while (dirlen--)
+		free(e[dirlen]);
+	free(e);
+
+	return s;
 }
 
 static enum status
