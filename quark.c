@@ -857,7 +857,7 @@ static void
 usage(void)
 {
 	die("usage: %s [-v] [[[-h host] [-p port]] | [-U udsocket]] "
-	    "[-d dir] [-u user] [-g group]\n", argv0);
+	    "[-d dir] [-l] [-L] [-u user] [-g group]\n", argv0);
 }
 
 int
@@ -878,6 +878,12 @@ main(int argc, char *argv[])
 		break;
 	case 'h':
 		host = EARGF(usage());
+		break;
+	case 'l':
+		listdirs = 0;
+		break;
+	case 'L':
+		listdirs = 1;
 		break;
 	case 'p':
 		port = EARGF(usage());
