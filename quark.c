@@ -271,7 +271,7 @@ getrequest(int fd, struct request *r)
 	/* match field type */
 	for (; *p != '\0';) {
 		for (i = 0; i < NUM_REQ_FIELDS; i++) {
-			if (!strncmp(p, req_field_str[i],
+			if (!strncasecmp(p, req_field_str[i],
 			             strlen(req_field_str[i]))) {
 				break;
 			}
@@ -293,7 +293,7 @@ getrequest(int fd, struct request *r)
 		}
 
 		/* skip whitespace */
-		for (++p; *p == ' '; p++)
+		for (++p; *p == ' ' || *p == '\t'; p++)
 			;
 
 		/* extract field content */
