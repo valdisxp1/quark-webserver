@@ -407,12 +407,14 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 
 	/* open file */
 	if (!(fp = fopen(name, "r"))) {
-		return sendstatus(fd, S_FORBIDDEN);
+		s = sendstatus(fd, S_FORBIDDEN);
+		goto cleanup;
 	}
 
 	/* seek to lower bound */
 	if (fseek(fp, lower, SEEK_SET)) {
-		return sendstatus(fd, S_INTERNAL_SERVER_ERROR);
+		s = sendstatus(fd, S_INTERNAL_SERVER_ERROR);
+		goto cleanup;
 	}
 
 	/* send header as late as possible */
@@ -428,16 +430,19 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		    "Content-Length: %zu\r\n",
 	            s, status_str[s], timestamp(0, t1),
 		    timestamp(st->st_mtim.tv_sec, t2), mime, upper - lower) < 0) {
-		return S_REQUEST_TIMEOUT;
+		s = S_REQUEST_TIMEOUT;
+		goto cleanup;
 	}
 	if (range) {
 		if (dprintf(fd, "Content-Range: bytes %zu-%zu/%zu\r\n",
 		            lower, upper - 1, st->st_size) < 0) {
-			return S_REQUEST_TIMEOUT;
+			s = S_REQUEST_TIMEOUT;
+			goto cleanup;
 		}
 	}
 	if (dprintf(fd, "\r\n") < 0) {
-		return S_REQUEST_TIMEOUT;
+		s = S_REQUEST_TIMEOUT;
+		goto cleanup;
 	}
 
 	if (r->method == M_GET) {
@@ -460,6 +465,9 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 			}
 		}
 	}
+cleanup:
+	if (fp)
+		fclose(fp);
 
 	return s;
 }
