@@ -215,7 +215,7 @@ getrequest(int fd, struct request *r)
 		}
 	}
 	if (i == NUM_REQ_METHODS) {
-		return sendstatus(fd, S_BAD_REQUEST);
+		return sendstatus(fd, S_METHOD_NOT_ALLOWED);
 	}
 
 	/* a single space must follow the method */
