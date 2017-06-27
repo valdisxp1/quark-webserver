@@ -313,6 +313,30 @@ getrequest(int fd, struct request *r)
 	return 0;
 }
 
+static int
+compareent(const struct dirent **d1, const struct dirent **d2)
+{
+	int v;
+
+	v = ((*d2)->d_type == DT_DIR ? 1 : -1) -
+	    ((*d1)->d_type == DT_DIR ? 1 : -1);
+	if (v)
+		return v;
+	return strcmp((*d1)->d_name, (*d2)->d_name);
+}
+
+static char *
+filetype(int t)
+{
+	switch (t) {
+	case DT_FIFO: return "|";
+	case DT_DIR:  return "/";
+	case DT_LNK:  return "@";
+	case DT_SOCK: return "=";
+	}
+	return "";
+}
+
 static enum status
 senddir(int fd, char *name, struct request *r)
 {
@@ -322,7 +346,7 @@ senddir(int fd, char *name, struct request *r)
 	static char t[TIMESTAMP_LEN];
 
 	/* read directory */
-	if ((dirlen = scandir(name, &e, NULL, alphasort)) < 0) {
+	if ((dirlen = scandir(name, &e, NULL, compareent)) < 0) {
 		return sendstatus(fd, S_FORBIDDEN);
 	}
 
@@ -355,8 +379,8 @@ senddir(int fd, char *name, struct request *r)
 			}
 
 			/* entry line */
-			if (dprintf(fd, "<br />\n\t\t<a href=\"%s\">%s</a>",
-			            e[i]->d_name, e[i]->d_name) < 0) {
+			if (dprintf(fd, "<br />\n\t\t<a href=\"%s\">%s%s</a>",
+			            e[i]->d_name, e[i]->d_name, filetype(e[i]->d_type)) < 0) {
 				return S_REQUEST_TIMEOUT;
 			}
 		}
