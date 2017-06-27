@@ -158,7 +158,7 @@ sendstatus(int fd, enum status s)
 	            "\r\n"
 	            "<!DOCTYPE html>\n<html>\n\t<head>\n"
 	            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
-	            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>",
+	            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>\n",
 	            s, status_str[s], timestamp(0, t),
 	            (s == S_METHOD_NOT_ALLOWED) ? "Allow: HEAD, GET\r\n" : "",
 	            s, status_str[s], s, status_str[s]) < 0) {
@@ -362,7 +362,7 @@ senddir(int fd, char *name, struct request *r)
 		}
 
 		/* listing footer */
-		if (dprintf(fd, "\n\t</body>\n</html>") < 0) {
+		if (dprintf(fd, "\n\t</body>\n</html>\n") < 0) {
 			return S_REQUEST_TIMEOUT;
 		}
 	}
