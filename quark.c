@@ -32,45 +32,29 @@ char *argv0;
 
 #undef MIN
 #define MIN(x,y)  ((x) < (y) ? (x) : (y))
-#undef MAX
-#define MAX(x,y)  ((x) > (y) ? (x) : (y))
 
 #define TIMESTAMP_LEN 30
 
 enum req_field {
-	REQ_HOST,
 	REQ_RANGE,
 	REQ_MOD,
 	NUM_REQ_FIELDS,
 };
 
 static char *req_field_str[] = {
-	[REQ_HOST]    = "Host",
 	[REQ_RANGE]   = "Range",
 	[REQ_MOD]     = "If-Modified-Since",
 };
 
 enum req_method {
-	M_OPTIONS,
 	M_GET,
 	M_HEAD,
-	M_POST,
-	M_PUT,
-	M_DELETE,
-	M_TRACE,
-	M_CONNECT,
 	NUM_REQ_METHODS,
 };
 
 static char *req_method_str[] = {
-	[M_OPTIONS] = "OPTIONS",
-	[M_GET]     = "GET",
-	[M_HEAD]    = "HEAD",
-	[M_POST]    = "POST",
-	[M_PUT]     = "PUT",
-	[M_DELETE]  = "DELETE",
-	[M_TRACE]   = "TRACE",
-	[M_CONNECT] = "CONNECT",
+	[M_GET]  = "GET",
+	[M_HEAD] = "HEAD",
 };
 
 struct request {
@@ -518,11 +502,6 @@ sendresponse(int fd, struct request *r)
 	off_t lower, upper;
 	static char realtarget[PATH_MAX], tmptarget[PATH_MAX], t[TIMESTAMP_LEN];
 	char *p, *q, *mime;
-
-	/* check method */
-	if (r->method != M_GET && r->method != M_HEAD) {
-		return sendstatus(fd, S_METHOD_NOT_ALLOWED);
-	}
 
 	/* normalize target */
 	memcpy(realtarget, r->target, sizeof(realtarget));
