@@ -96,8 +96,9 @@ static char *status_str[] = {
 static char *
 timestamp(time_t t, char buf[TIMESTAMP_LEN])
 {
-	if (!t)
+	if (!t) {
 		t = time(NULL);
+	}
 	strftime(buf, TIMESTAMP_LEN, "%a, %d %b %Y %T GMT", gmtime(&t));
 
 	return buf;
@@ -272,7 +273,7 @@ getrequest(int fd, struct request *r)
 	for (; *p != '\0';) {
 		for (i = 0; i < NUM_REQ_FIELDS; i++) {
 			if (!strncasecmp(p, req_field_str[i],
-			             strlen(req_field_str[i]))) {
+			                 strlen(req_field_str[i]))) {
 				break;
 			}
 		}
@@ -320,8 +321,10 @@ compareent(const struct dirent **d1, const struct dirent **d2)
 
 	v = ((*d2)->d_type == DT_DIR ? 1 : -1) -
 	    ((*d1)->d_type == DT_DIR ? 1 : -1);
-	if (v)
+	if (v) {
 		return v;
+	}
+
 	return strcmp((*d1)->d_name, (*d2)->d_name);
 }
 
@@ -334,6 +337,7 @@ filetype(int t)
 	case DT_LNK:  return "@";
 	case DT_SOCK: return "=";
 	}
+
 	return "";
 }
 
@@ -383,7 +387,7 @@ senddir(int fd, char *name, struct request *r)
 			/* entry line */
 			if (dprintf(fd, "<br />\n\t\t<a href=\"%s%s\">%s%s</a>",
 			            e[i]->d_name,
-			            e[i]->d_type & DT_DIR ? "/" : "",
+			            (e[i]->d_type & DT_DIR ? "/" : ""),
 			            e[i]->d_name,
 			            filetype(e[i]->d_type)) < 0) {
 				s = S_REQUEST_TIMEOUT;
@@ -400,8 +404,9 @@ senddir(int fd, char *name, struct request *r)
 	s = S_OK;
 
 cleanup:
-	while (dirlen--)
+	while (dirlen--) {
 		free(e[dirlen]);
+	}
 	free(e);
 
 	return s;
@@ -479,8 +484,9 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		}
 	}
 cleanup:
-	if (fp)
+	if (fp) {
 		fclose(fp);
+	}
 
 	return s;
 }
