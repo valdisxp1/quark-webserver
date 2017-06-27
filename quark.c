@@ -661,7 +661,7 @@ sendresponse(int fd, struct request *r)
 	}
 
 	/* mime */
-	mime = "text/plain";
+	mime = "application/octet-stream";
 	if ((p = strrchr(realtarget, '.'))) {
 		for (i = 0; i < sizeof(mimes) / sizeof(*mimes); i++) {
 			if (!strcmp(mimes[i].ext, p + 1)) {
