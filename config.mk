@@ -8,7 +8,7 @@ PREFIX = /usr/local
 MANPREFIX = $(PREFIX)/man
 
 # flags
-CPPFLAGS = -DVERSION=\"$(VERSION)\" -D_DEFAULT_SOURCE -D_XOPEN_SOURCE
+CPPFLAGS = -DVERSION=\"$(VERSION)\" -D_DEFAULT_SOURCE
 CFLAGS   = -std=c99 -pedantic -Wall -Os
 LDFLAGS  = -s
 
