@@ -329,7 +329,7 @@ compareent(const struct dirent **d1, const struct dirent **d2)
 }
 
 static char *
-filetype(int t)
+suffix(int t)
 {
 	switch (t) {
 	case DT_FIFO: return "|";
@@ -389,7 +389,7 @@ senddir(int fd, char *name, struct request *r)
 			            e[i]->d_name,
 			            (e[i]->d_type == DT_DIR) ? "/" : "",
 			            e[i]->d_name,
-			            filetype(e[i]->d_type)) < 0) {
+			            suffix(e[i]->d_type)) < 0) {
 				s = S_REQUEST_TIMEOUT;
 				goto cleanup;
 			}
