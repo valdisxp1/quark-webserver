@@ -387,7 +387,7 @@ senddir(int fd, char *name, struct request *r)
 			/* entry line */
 			if (dprintf(fd, "<br />\n\t\t<a href=\"%s%s\">%s%s</a>",
 			            e[i]->d_name,
-			            (e[i]->d_type & DT_DIR ? "/" : ""),
+			            (e[i]->d_type == DT_DIR) ? "/" : "",
 			            e[i]->d_name,
 			            filetype(e[i]->d_type)) < 0) {
 				s = S_REQUEST_TIMEOUT;
