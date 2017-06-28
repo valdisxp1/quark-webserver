@@ -176,6 +176,9 @@ getrequest(int fd, struct request *r)
 	ssize_t off;
 	char h[HEADER_MAX], *p, *q;
 
+	/* empty all fields */
+	memset(r, 0, sizeof(*r));
+
 	/*
 	 * receive header
 	 */
@@ -263,11 +266,6 @@ getrequest(int fd, struct request *r)
 	/*
 	 * parse request-fields
 	 */
-
-	/* empty all fields */
-	for (i = 0; i < NUM_REQ_FIELDS; i++) {
-		r->field[i][0] = '\0';
-	}
 
 	/* match field type */
 	for (; *p != '\0';) {
