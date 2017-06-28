@@ -104,7 +104,7 @@ timestamp(time_t t, char buf[TIMESTAMP_LEN])
 	return buf;
 }
 
-static size_t
+static void
 decode(char src[PATH_MAX], char dest[PATH_MAX])
 {
 	size_t i;
@@ -122,11 +122,9 @@ decode(char src[PATH_MAX], char dest[PATH_MAX])
 		}
 	}
 	dest[i] = '\0';
-
-	return i;
 }
 
-static size_t
+static void
 encode(char src[PATH_MAX], char dest[PATH_MAX])
 {
 	size_t i;
@@ -141,8 +139,6 @@ encode(char src[PATH_MAX], char dest[PATH_MAX])
 			i++;
 		}
 	}
-
-	return 0;
 }
 
 static enum status
