@@ -912,8 +912,9 @@ main(int argc, char *argv[])
 		usage();
 	} ARGEND
 
-	if (argc)
+	if (argc) {
 		usage();
+	}
 
 	/* reap children automatically */
 	if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
