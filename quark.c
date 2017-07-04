@@ -841,6 +841,7 @@ static int
 getusock(char *udsname)
 {
 	struct sockaddr_un addr;
+	size_t udsnamelen;
 	int insock;
 
 	if ((insock = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
@@ -849,7 +850,11 @@ getusock(char *udsname)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, udsname, sizeof(addr.sun_path) - 1);
+
+	if ((udsnamelen = strlen(udsname)) > sizeof(addr.sun_path) - 1) {
+		die("%s: UNIX-domain socket name truncated\n", argv0);
+	}
+	memcpy(addr.sun_path, udsname, udsnamelen + 1);
 
 	unlink(udsname);
 
