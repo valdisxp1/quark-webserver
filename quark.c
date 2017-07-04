@@ -98,9 +98,6 @@ static char *status_str[] = {
 static char *
 timestamp(time_t t, char buf[TIMESTAMP_LEN])
 {
-	if (!t) {
-		t = time(NULL);
-	}
 	strftime(buf, TIMESTAMP_LEN, "%a, %d %b %Y %T GMT", gmtime(&t));
 
 	return buf;
@@ -158,7 +155,7 @@ sendstatus(int fd, enum status s)
 	            "<!DOCTYPE html>\n<html>\n\t<head>\n"
 	            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
 	            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>\n",
-	            s, status_str[s], timestamp(0, t),
+	            s, status_str[s], timestamp(time(NULL), t),
 	            (s == S_METHOD_NOT_ALLOWED) ? "Allow: HEAD, GET\r\n" : "",
 	            s, status_str[s], s, status_str[s]) < 0) {
 		return S_REQUEST_TIMEOUT;
@@ -357,7 +354,7 @@ senddir(int fd, char *name, struct request *r)
 	            "Connection: close\r\n"
 		    "Content-Type: text/html\r\n"
 		    "\r\n",
-	            S_OK, status_str[S_OK], timestamp(0, t)) < 0) {
+	            S_OK, status_str[S_OK], timestamp(time(NULL), t)) < 0) {
 		s = S_REQUEST_TIMEOUT;
 		goto cleanup;
 	}
@@ -442,7 +439,7 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		    "Last-Modified: %s\r\n"
 		    "Content-Type: %s\r\n"
 		    "Content-Length: %zu\r\n",
-	            s, status_str[s], timestamp(0, t1),
+	            s, status_str[s], timestamp(time(NULL), t1),
 		    timestamp(st->st_mtim.tv_sec, t2), mime, upper - lower + 1) < 0) {
 		s = S_REQUEST_TIMEOUT;
 		goto cleanup;
@@ -590,8 +587,8 @@ sendresponse(int fd, struct request *r)
 		            "Location: %s\r\n"
 		            "\r\n",
 		            S_MOVED_PERMANENTLY,
-		            status_str[S_MOVED_PERMANENTLY], timestamp(0, t),
-		            tmptarget) < 0) {
+		            status_str[S_MOVED_PERMANENTLY],
+			    timestamp(time(NULL), t), tmptarget) < 0) {
 			return S_REQUEST_TIMEOUT;
 		}
 
@@ -638,7 +635,7 @@ sendresponse(int fd, struct request *r)
 			            "Connection: close\r\n"
 				    "\r\n",
 			            S_NOT_MODIFIED, status_str[S_NOT_MODIFIED],
-			            timestamp(0, t)) < 0) {
+			            timestamp(time(NULL), t)) < 0) {
 				return S_REQUEST_TIMEOUT;
 			}
 		}
@@ -679,7 +676,7 @@ sendresponse(int fd, struct request *r)
 			            "\r\n",
 			            S_RANGE_NOT_SATISFIABLE,
 			            status_str[S_RANGE_NOT_SATISFIABLE],
-			            timestamp(0, t),
+			            timestamp(time(NULL), t),
 			            st.st_size) < 0) {
 				return S_REQUEST_TIMEOUT;
 			}
