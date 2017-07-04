@@ -667,10 +667,10 @@ sendresponse(int fd, struct request *r)
 		}
 
 		/* sanitize range */
+		upper = MIN(st.st_size, upper);
 		if (lower < 0 || upper < 0 || lower > upper) {
 			return sendstatus(fd, S_BAD_REQUEST);
 		}
-		upper = MIN(st.st_size, upper);
 	}
 
 	/* mime */
