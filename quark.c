@@ -73,6 +73,7 @@ enum status {
 	S_NOT_FOUND             = 404,
 	S_METHOD_NOT_ALLOWED    = 405,
 	S_REQUEST_TIMEOUT       = 408,
+	S_RANGE_NOT_SATISFIABLE = 416,
 	S_REQUEST_TOO_LARGE     = 431,
 	S_INTERNAL_SERVER_ERROR = 500,
 	S_VERSION_NOT_SUPPORTED = 505,
@@ -88,6 +89,7 @@ static char *status_str[] = {
 	[S_NOT_FOUND]             = "Not Found",
 	[S_METHOD_NOT_ALLOWED]    = "Method Not Allowed",
 	[S_REQUEST_TIMEOUT]       = "Request Time-out",
+	[S_RANGE_NOT_SATISFIABLE] = "Range Not Satisfiable",
 	[S_REQUEST_TOO_LARGE]     = "Request Header Fields Too Large",
 	[S_INTERNAL_SERVER_ERROR] = "Internal Server Error",
 	[S_VERSION_NOT_SUPPORTED] = "HTTP Version not supported",
@@ -441,13 +443,13 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		    "Content-Type: %s\r\n"
 		    "Content-Length: %zu\r\n",
 	            s, status_str[s], timestamp(0, t1),
-		    timestamp(st->st_mtim.tv_sec, t2), mime, upper - lower) < 0) {
+		    timestamp(st->st_mtim.tv_sec, t2), mime, upper - lower + 1) < 0) {
 		s = S_REQUEST_TIMEOUT;
 		goto cleanup;
 	}
 	if (range) {
 		if (dprintf(fd, "Content-Range: bytes %zu-%zu/%zu\r\n",
-		            lower, upper - 1, st->st_size) < 0) {
+		            lower, upper, st->st_size) < 0) {
 			s = S_REQUEST_TIMEOUT;
 			goto cleanup;
 		}
@@ -666,10 +668,22 @@ sendresponse(int fd, struct request *r)
 			upper = atoi(q);
 		}
 
-		/* sanitize range */
-		upper = MIN(st.st_size, upper);
-		if (lower < 0 || upper < 0 || lower > upper) {
-			return sendstatus(fd, S_BAD_REQUEST);
+		/* check range */
+		if (lower < 0 || upper < 0 || lower > upper ||
+		    upper >= st.st_size) {
+			if (dprintf(fd,
+			            "HTTP/1.1 %d %s\r\n"
+			            "Date: %s\r\n"
+			            "Content-Range: bytes */%zu\r\n"
+			            "Connection: close\r\n"
+			            "\r\n",
+			            S_RANGE_NOT_SATISFIABLE,
+			            status_str[S_RANGE_NOT_SATISFIABLE],
+			            timestamp(0, t),
+			            st.st_size) < 0) {
+				return S_REQUEST_TIMEOUT;
+			}
+			return S_RANGE_NOT_SATISFIABLE;
 		}
 	}
 
