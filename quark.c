@@ -531,7 +531,7 @@ squash:
 			*p = '\0';
 			len = p - path;
 		} else {
-			memcpy(p, q + 1, len - ((q + 1) - path) + 2);
+			memmove(p, q + 1, len - ((q + 1) - path) + 2);
 			len -= (q + 1) - p;
 		}
 	}
