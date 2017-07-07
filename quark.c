@@ -36,12 +36,14 @@ char *argv0;
 #define TIMESTAMP_LEN 30
 
 enum req_field {
+	REQ_HOST,
 	REQ_RANGE,
 	REQ_MOD,
 	NUM_REQ_FIELDS,
 };
 
 static char *req_field_str[] = {
+	[REQ_HOST]    = "Host",
 	[REQ_RANGE]   = "Range",
 	[REQ_MOD]     = "If-Modified-Since",
 };
@@ -542,10 +544,12 @@ squash:
 static enum status
 sendresponse(int fd, struct request *r)
 {
+	struct in6_addr res;
 	struct stat st;
 	struct tm tm;
 	size_t len, i;
 	off_t lower, upper;
+	int hasport, ipv6host;
 	static char realtarget[PATH_MAX], tmptarget[PATH_MAX], t[TIMESTAMP_LEN];
 	char *p, *q, *mime;
 	const char *err;
@@ -580,18 +584,31 @@ sendresponse(int fd, struct request *r)
 
 	/* redirect if targets differ */
 	if (strcmp(r->target, realtarget)) {
+		/* do we need to add a port to the Location? */
+		hasport = strcmp(port, "80");
+
+		/* RFC 2732 specifies to use brackets for IPv6-addresses in
+		 * URLs, so we need to check if our host is one and honor that
+		 * later when we fill the "Location"-field */
+		ipv6host = inet_pton(AF_INET6, r->field[REQ_HOST][0] ?
+		                     r->field[REQ_HOST] : host, &res);
+
 		/* encode realtarget */
 		encode(realtarget, tmptarget);
 
+		/* send redirection header */
 		if (dprintf(fd,
 		            "HTTP/1.1 %d %s\r\n"
 		            "Date: %s\r\n"
 		            "Connection: close\r\n"
-		            "Location: %s\r\n"
+		            "Location: http://%s%s%s%s%s%s\r\n"
 		            "\r\n",
 		            S_MOVED_PERMANENTLY,
 		            status_str[S_MOVED_PERMANENTLY],
-			    timestamp(time(NULL), t), tmptarget) < 0) {
+			    timestamp(time(NULL), t), ipv6host ? "[" : "",
+		            r->field[REQ_HOST][0] ? r->field[REQ_HOST] : host,
+		            ipv6host ? "]" : "", hasport ? ":" : "",
+		            hasport ? port : "", tmptarget) < 0) {
 			return S_REQUEST_TIMEOUT;
 		}
 
