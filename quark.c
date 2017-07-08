@@ -590,8 +590,10 @@ sendresponse(int fd, struct request *r)
 		/* RFC 2732 specifies to use brackets for IPv6-addresses in
 		 * URLs, so we need to check if our host is one and honor that
 		 * later when we fill the "Location"-field */
-		ipv6host = inet_pton(AF_INET6, r->field[REQ_HOST][0] ?
-		                     r->field[REQ_HOST] : host, &res);
+		if ((ipv6host = inet_pton(AF_INET6, r->field[REQ_HOST][0] ?
+		                          r->field[REQ_HOST] : host, &res)) < 0) {
+			return sendstatus(fd, S_INTERNAL_SERVER_ERROR);
+		}
 
 		/* encode realtarget */
 		encode(realtarget, tmptarget);
