@@ -5,6 +5,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -28,6 +29,8 @@
 #include "arg.h"
 
 char *argv0;
+static int insock;
+static char *udsname;
 
 #include "config.h"
 
@@ -824,7 +827,7 @@ serve(int insock)
 	}
 }
 
-void
+static void
 die(const char *errstr, ...)
 {
 	va_list ap;
@@ -918,6 +921,23 @@ getusock(char *udsname, uid_t uid, gid_t gid)
 }
 
 static void
+cleanup(void)
+{
+	close(insock);
+	if (udsname) {
+		if (unlink(udsname) < 0)
+			fprintf(stderr, "unlink: %s\n", strerror(errno));
+	}
+}
+
+static void
+sigcleanup(int sig)
+{
+	cleanup();
+	_exit(1);
+}
+
+static void
 usage(void)
 {
 	char *opts = "[-v] [-d dir] [-l] [-L] [-u user] [-g group]";
@@ -932,8 +952,8 @@ main(int argc, char *argv[])
 	struct passwd *pwd = NULL;
 	struct group *grp = NULL;
 	struct rlimit rlim;
-	int i, insock;
-	char *udsname = NULL;
+	pid_t cpid, wpid;
+	int i, status = 0;
 
 	ARGBEGIN {
 	case 'd':
@@ -969,6 +989,13 @@ main(int argc, char *argv[])
 
 	if (argc) {
 		usage();
+	}
+
+	atexit(cleanup);
+	if (signal(SIGINT, sigcleanup) == SIG_ERR) {
+		fprintf(stderr, "%s: signal: Failed to handle SIGINT\n",
+		        argv0);
+		return 1;
 	}
 
 	/* compile and check the supplied vhost regexes */
@@ -1011,35 +1038,52 @@ main(int argc, char *argv[])
 	insock = udsname ? getusock(udsname, pwd->pw_uid, grp->gr_gid) :
 	                   getipsock();
 
-	/* chroot */
-	if (chdir(servedir) < 0) {
-		die("%s: chdir %s: %s\n", argv0, servedir, strerror(errno));
-	}
-	if (chroot(".") < 0) {
-		die("%s: chroot .: %s\n", argv0, strerror(errno));
+	switch (cpid = fork()) {
+	case -1:
+		fprintf(stderr, "%s: fork: %s\n", argv0, strerror(errno));
+		break;
+	case 0:
+		/* reap children automatically */
+		if (signal(SIGINT, SIG_IGN) == SIG_ERR) {
+			fprintf(stderr, "%s: signal: Failed to set SIG_IGN on"
+			        "SIGINT\n", argv0);
+			return 1;
+		}
+
+		/* chroot */
+		if (chdir(servedir) < 0) {
+			die("%s: chdir %s: %s\n", argv0, servedir, strerror(errno));
+		}
+		if (chroot(".") < 0) {
+			die("%s: chroot .: %s\n", argv0, strerror(errno));
+		}
+
+		/* drop root */
+		if (grp && setgroups(1, &(grp->gr_gid)) < 0) {
+			die("%s: setgroups: %s\n", argv0, strerror(errno));
+		}
+		if (grp && setgid(grp->gr_gid) < 0) {
+			die("%s: setgid: %s\n", argv0, strerror(errno));
+		}
+		if (pwd && setuid(pwd->pw_uid) < 0) {
+			die("%s: setuid: %s\n", argv0, strerror(errno));
+		}
+		if (getuid() == 0) {
+			die("%s: won't run as root user\n", argv0);
+		}
+		if (getgid() == 0) {
+			die("%s: won't run as root group\n", argv0);
+		}
+
+		serve(insock);
+		_exit(0);
+	default:
+		while ((wpid = wait(&status)) > 0)
+			;
 	}
 
-	/* drop root */
-	if (grp && setgroups(1, &(grp->gr_gid)) < 0) {
-		die("%s: setgroups: %s\n", argv0, strerror(errno));
-	}
-	if (grp && setgid(grp->gr_gid) < 0) {
-		die("%s: setgid: %s\n", argv0, strerror(errno));
-	}
-	if (pwd && setuid(pwd->pw_uid) < 0) {
-		die("%s: setuid: %s\n", argv0, strerror(errno));
-	}
-	if (getuid() == 0) {
-		die("%s: won't run as root user\n", argv0);
-	}
-	if (getgid() == 0) {
-		die("%s: won't run as root group\n", argv0);
-	}
-
-	serve(insock);
-	close(insock);
-
-	return 0;
+	cleanup();
+	return status;
 }
 
 /*
