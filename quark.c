@@ -878,11 +878,11 @@ getipsock(void)
 }
 
 static int
-getusock(char *udsname)
+getusock(char *udsname, uid_t uid, gid_t gid)
 {
 	struct sockaddr_un addr;
 	size_t udsnamelen;
-	int insock;
+	int insock, sockmode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH;
 
 	if ((insock = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
 		die("%s: socket: %s\n", argv0, strerror(errno));
@@ -904,6 +904,14 @@ getusock(char *udsname)
 
 	if (listen(insock, SOMAXCONN) < 0) {
 		die("%s: listen: %s\n", argv0, strerror(errno));
+	}
+
+	if (chmod(udsname, sockmode) < 0) {
+		die("%s: chmod: %s\n", argv0, strerror(errno));
+	}
+
+	if (chown(udsname, uid, gid) < 0) {
+		die("%s: chown: %s\n", argv0, strerror(errno));
 	}
 
 	return insock;
@@ -1000,7 +1008,8 @@ main(int argc, char *argv[])
 	}
 
 	/* bind socket */
-	insock = udsname ? getusock(udsname) : getipsock();
+	insock = udsname ? getusock(udsname, pwd->pw_uid, grp->gr_gid) :
+	                   getipsock();
 
 	/* chroot */
 	if (chdir(servedir) < 0) {
