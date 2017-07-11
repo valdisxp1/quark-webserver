@@ -566,10 +566,9 @@ sendresponse(int fd, struct request *r)
 	/* match vhost */
 	if (vhosts) {
 		for (i = 0; i < LEN(vhost); i++) {
+			/* switch to vhost directory if there is a match */
 			if (!regexec(&vhost[i].re, r->field[REQ_HOST], 0,
-			    NULL, 0) &&
-			    /* switch to vhost directory */
-			    chdir(vhost[i].dir) < 0) {
+			    NULL, 0) && chdir(vhost[i].dir) < 0) {
 				return sendstatus(fd, (errno == EACCES) ?
 				                  S_FORBIDDEN : S_NOT_FOUND);
 			}
@@ -606,7 +605,7 @@ sendresponse(int fd, struct request *r)
 
 	/* redirect if targets differ or host is non-canonical */
 	if (strcmp(r->target, realtarget) || (vhosts && r->field[REQ_HOST][0] &&
-	    strcmp(r->field[REQ_HOST], vhost[i].name))) {
+	    i < LEN(vhost) && strcmp(r->field[REQ_HOST], vhost[i].name))) {
 		/* do we need to add a port to the Location? */
 		hasport = strcmp(port, "80");
 
