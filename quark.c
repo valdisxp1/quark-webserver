@@ -102,9 +102,6 @@ static char *status_str[] = {
 	[S_VERSION_NOT_SUPPORTED] = "HTTP Version not supported",
 };
 
-/* vhost regex compilate */
-static regex_t vhost_regex[LEN(vhost)];
-
 long long strtonum(const char *, long long, long long, const char **);
 
 static char *
@@ -566,14 +563,10 @@ sendresponse(int fd, struct request *r)
 	/* match vhost */
 	if (vhosts) {
 		for (i = 0; i < LEN(vhost); i++) {
-			if (!regexec(&vhost_regex[i], r->field[REQ_HOST], 0,
-			             NULL, 0)) {
-				break;
-			}
-		}
-		if (i < LEN(vhost)) {
-			/* switch to vhost directory */
-			if (chdir(vhost[i].dir) < 0) {
+			if (!regexec(&vhost[i].re, r->field[REQ_HOST], 0,
+			    NULL, 0) &&
+			    /* switch to vhost directory */
+			    chdir(vhost[i].dir) < 0) {
 				return sendstatus(fd, (errno == EACCES) ?
 				                  S_FORBIDDEN : S_NOT_FOUND);
 			}
@@ -971,7 +964,7 @@ main(int argc, char *argv[])
 	/* compile and check the supplied vhost regexes */
 	if (vhosts) {
 		for (i = 0; i < LEN(vhost); i++) {
-			if (regcomp(&vhost_regex[i], vhost[i].regex,
+			if (regcomp(&vhost[i].re, vhost[i].regex,
 			            REG_ICASE | REG_NOSUB)) {
 				die("%s: regcomp '%s': invalid regex\n", argv0,
 				    vhost[i].regex);

@@ -13,10 +13,11 @@ static const int   maxnprocs = 512;
 #define HEADER_MAX 4096
 #define FIELD_MAX  200
 
-static const struct {
-	char *name;
-	char *regex;
-	char *dir;
+static struct {
+	const char *name;
+	const char *regex;
+	const char *dir;
+	regex_t re;
 } vhost[] = {
 	{ "example.org", "^(www.)example.org$", "/example.org" },
 };
