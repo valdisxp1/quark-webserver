@@ -444,7 +444,8 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		    "Content-Type: %s\r\n"
 		    "Content-Length: %zu\r\n",
 	            s, status_str[s], timestamp(time(NULL), t1),
-		    timestamp(st->st_mtim.tv_sec, t2), mime, upper - lower + 1) < 0) {
+		    timestamp(st->st_mtim.tv_sec, t2), mime,
+	            upper - lower + (st->st_size > 0)) < 0) {
 		s = S_REQUEST_TIMEOUT;
 		goto cleanup;
 	}
