@@ -12,7 +12,7 @@
 .Op Fl p Ar port
 .Oc
 |
-.Op Fl U Ar udsocket
+.Op Fl U Ar sockfile
 .Oc
 .Op Fl d Ar dir
 .Op Fl l
@@ -49,9 +49,9 @@ for incoming connections.
 Set user ID to the ID of
 .Ar user
 when dropping privileges.
-.It Fl U Ar udsocket
-Create the UNIX-domain socket
-.Ar udsocket
+.It Fl U Ar sockfile
+Create the UNIX-domain socket file
+.Ar sockfile
 and listen on it for incoming connections.
 .It Fl v
 Print version information to stdout and exit.

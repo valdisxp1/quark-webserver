@@ -912,7 +912,7 @@ getusock(char *udsname)
 static void
 usage(void)
 {
-	die("usage: %s [-v] [[[-h host] [-p port]] | [-U udsocket]] "
+	die("usage: %s [-v] [[[-h host] [-p port]] | [-U sockfile]] "
 	    "[-d dir] [-l] [-L] [-u user] [-g group]\n", argv0);
 }
 
