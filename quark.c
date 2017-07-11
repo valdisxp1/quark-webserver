@@ -448,11 +448,11 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 	            "HTTP/1.1 %d %s\r\n"
 	            "Date: %s\r\n"
 	            "Connection: close\r\n"
-		    "Last-Modified: %s\r\n"
-		    "Content-Type: %s\r\n"
-		    "Content-Length: %zu\r\n",
+	            "Last-Modified: %s\r\n"
+	            "Content-Type: %s\r\n"
+	            "Content-Length: %zu\r\n",
 	            s, status_str[s], timestamp(time(NULL), t1),
-		    timestamp(st->st_mtim.tv_sec, t2), mime,
+	            timestamp(st->st_mtim.tv_sec, t2), mime,
 	            upper - lower + (st->st_size > 0)) < 0) {
 		s = S_REQUEST_TIMEOUT;
 		goto cleanup;
