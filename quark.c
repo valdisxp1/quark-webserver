@@ -16,6 +16,7 @@
 #include <limits.h>
 #include <netdb.h>
 #include <pwd.h>
+#include <regex.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -32,6 +33,10 @@ char *argv0;
 
 #undef MIN
 #define MIN(x,y)  ((x) < (y) ? (x) : (y))
+#undef LEN
+#define LEN(x) (sizeof (x) / sizeof *(x))
+#undef RELPATH
+#define RELPATH(x) ((!*(x) || !strcmp(x, "/")) ? "." : ((x) + 1))
 
 #define TIMESTAMP_LEN 30
 
@@ -96,6 +101,9 @@ static char *status_str[] = {
 	[S_INTERNAL_SERVER_ERROR] = "Internal Server Error",
 	[S_VERSION_NOT_SUPPORTED] = "HTTP Version not supported",
 };
+
+/* vhost regex compilate */
+static regex_t vhost_regex[LEN(vhost)];
 
 long long strtonum(const char *, long long, long long, const char **);
 
@@ -555,6 +563,23 @@ sendresponse(int fd, struct request *r)
 	char *p, *q, *mime;
 	const char *err;
 
+	/* match vhost */
+	if (vhosts) {
+		for (i = 0; i < LEN(vhost); i++) {
+			if (!regexec(&vhost_regex[i], r->field[REQ_HOST], 0,
+			             NULL, 0)) {
+				break;
+			}
+		}
+		if (i < LEN(vhost)) {
+			/* switch to vhost directory */
+			if (chdir(vhost[i].dir) < 0) {
+				return sendstatus(fd, (errno == EACCES) ?
+				                  S_FORBIDDEN : S_NOT_FOUND);
+			}
+		}
+	}
+
 	/* normalize target */
 	memcpy(realtarget, r->target, sizeof(realtarget));
 	if (normabspath(realtarget)) {
@@ -567,7 +592,7 @@ sendresponse(int fd, struct request *r)
 	}
 
 	/* stat the target */
-	if (stat(realtarget, &st) < 0) {
+	if (stat(RELPATH(realtarget), &st) < 0) {
 		return sendstatus(fd, (errno == EACCES) ? S_FORBIDDEN : S_NOT_FOUND);
 	}
 
@@ -583,8 +608,9 @@ sendresponse(int fd, struct request *r)
 		}
 	}
 
-	/* redirect if targets differ */
-	if (strcmp(r->target, realtarget)) {
+	/* redirect if targets differ or host is non-canonical */
+	if (strcmp(r->target, realtarget) || (vhosts && r->field[REQ_HOST][0] &&
+	    strcmp(r->field[REQ_HOST], vhost[i].name))) {
 		/* do we need to add a port to the Location? */
 		hasport = strcmp(port, "80");
 
@@ -609,7 +635,8 @@ sendresponse(int fd, struct request *r)
 		            S_MOVED_PERMANENTLY,
 		            status_str[S_MOVED_PERMANENTLY],
 			    timestamp(time(NULL), t), ipv6host ? "[" : "",
-		            r->field[REQ_HOST][0] ? r->field[REQ_HOST] : host,
+		            r->field[REQ_HOST][0] ? (vhosts && i < LEN(vhost)) ?
+			    vhost[i].name : r->field[REQ_HOST] : host,
 		            ipv6host ? "]" : "", hasport ? ":" : "",
 		            hasport ? port : "", tmptarget) < 0) {
 			return S_REQUEST_TIMEOUT;
@@ -626,12 +653,12 @@ sendresponse(int fd, struct request *r)
 		}
 
 		/* stat the docindex, which must be a regular file */
-		if (stat(realtarget, &st) < 0 || !S_ISREG(st.st_mode)) {
+		if (stat(RELPATH(realtarget), &st) < 0 || !S_ISREG(st.st_mode)) {
 			if (listdirs) {
 				/* remove index suffix and serve dir */
 				realtarget[strlen(realtarget) -
 				           strlen(docindex)] = '\0';
-				return senddir(fd, realtarget, r);
+				return senddir(fd, RELPATH(realtarget), r);
 			} else {
 				/* reject */
 				if (!S_ISREG(st.st_mode) || errno == EACCES) {
@@ -721,7 +748,7 @@ sendresponse(int fd, struct request *r)
 		}
 	}
 
-	return sendfile(fd, realtarget, r, &st, mime, lower, upper);
+	return sendfile(fd, RELPATH(realtarget), r, &st, mime, lower, upper);
 }
 
 static void
@@ -782,14 +809,14 @@ serve(int insock)
 				inet_ntop(AF_INET,
 				          &(((struct sockaddr_in *)&in_sa)->sin_addr),
 				          inip4, sizeof(inip4));
-				printf("%s\t%s\t%d\t%s\n", tstmp, inip4,
-				       status, r.target);
+				printf("%s\t%s\t%d\t%s\t%s\n", tstmp, inip4,
+				       status, r.field[REQ_HOST], r.target);
 			} else {
 				inet_ntop(AF_INET6,
 				          &(((struct sockaddr_in6*)&in_sa)->sin6_addr),
 				          inip6, sizeof(inip6));
-				printf("%s\t%s\t%d\t%s\n", tstmp, inip6,
-				       status, r.target);
+				printf("%s\t%s\t%d\t%s\t%s\n", tstmp, inip6,
+				       status, r.field[REQ_HOST], r.target);
 			}
 
 			/* clean up and finish */
@@ -902,7 +929,7 @@ main(int argc, char *argv[])
 	struct passwd *pwd = NULL;
 	struct group *grp = NULL;
 	struct rlimit rlim;
-	int insock;
+	int i, insock;
 	char *udsname = NULL;
 
 	ARGBEGIN {
@@ -939,6 +966,17 @@ main(int argc, char *argv[])
 
 	if (argc) {
 		usage();
+	}
+
+	/* compile and check the supplied vhost regexes */
+	if (vhosts) {
+		for (i = 0; i < LEN(vhost); i++) {
+			if (regcomp(&vhost_regex[i], vhost[i].regex,
+			            REG_ICASE | REG_NOSUB)) {
+				die("%s: regcomp '%s': invalid regex\n", argv0,
+				    vhost[i].regex);
+			}
+		}
 	}
 
 	/* reap children automatically */
