@@ -1,24 +1,21 @@
-.Dd 2016-09-02
+.Dd 2017-07-11
 .Dt QUARK 1
 .Sh NAME
 .Nm quark
 .Nd simple web server
 .Sh SYNOPSIS
 .Nm
+.Op Fl l | L
+.Op Fl v | V
+.Oo
+.Oo
 .Op Fl h Ar host
 .Op Fl p Ar port
-.Op Fl v
-.Op Fl d Ar dir
-.Op Fl l
-.Op Fl L
-.Op Fl u Ar user
-.Op Fl g Ar group
-.Nm
+.Oc
+|
 .Op Fl U Ar sockfile
-.Op Fl v
+.Oc
 .Op Fl d Ar dir
-.Op Fl l
-.Op Fl L
 .Op Fl u Ar user
 .Op Fl g Ar group
 .Sh DESCRIPTION
@@ -57,7 +54,9 @@ Create the UNIX-domain socket file
 and listen on it for incoming connections.
 The file will be cleaned up at exit.
 .It Fl v
-Print version information to stdout and exit.
+Disable virtual hosts.
+.It Fl V
+Enable virtual hosts.
 .El
 .Sh CUSTOMIZATION
 .Nm

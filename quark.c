@@ -940,10 +940,8 @@ sigcleanup(int sig)
 static void
 usage(void)
 {
-	char *opts = "[-v] [-d dir] [-l] [-L] [-u user] [-g group]";
-
-	die("usage: %s [-h host] [-p port] %s\n"
-	    "       %s [-U sockfile] %s\n", argv0, opts, argv0, opts);
+	die("usage: %s [-l | -L] [-v | -V] [[[-h host] [-p port]] | [-U sockfile]] "
+	    "[-d dir] [-u user] [-g group]\n", argv0);
 }
 
 int
@@ -981,8 +979,11 @@ main(int argc, char *argv[])
 		udsname = EARGF(usage());
 		break;
 	case 'v':
-		fputs("quark-"VERSION"\n", stderr);
-		return 0;
+		vhosts = 0;
+		break;
+	case 'V':
+		vhosts = 1;
+		break;
 	default:
 		usage();
 	} ARGEND
