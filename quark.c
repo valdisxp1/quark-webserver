@@ -568,10 +568,10 @@ sendresponse(int fd, struct request *r)
 		for (i = 0; i < LEN(vhost); i++) {
 			/* switch to vhost directory if there is a match */
 			if (!regexec(&vhost[i].re, r->field[REQ_HOST], 0,
-			    NULL, 0) {
+			             NULL, 0)) {
 				if (chdir(vhost[i].dir) < 0) {
-					return sendstatus(fd, (errno == EACCES)
-				               ? S_FORBIDDEN : S_NOT_FOUND);
+					return sendstatus(fd, (errno == EACCES) ?
+					                  S_FORBIDDEN : S_NOT_FOUND);
 				}
 				break;
 			}
