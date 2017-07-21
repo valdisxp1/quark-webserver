@@ -721,8 +721,7 @@ sendresponse(int fd, struct request *r)
 		}
 
 		/* check range */
-		if (lower < 0 || upper < 0 || lower > upper ||
-		    upper >= st.st_size) {
+		if (lower < 0 || upper < 0 || lower > upper) {
 			if (dprintf(fd,
 			            "HTTP/1.1 %d %s\r\n"
 			            "Date: %s\r\n"
@@ -737,6 +736,10 @@ sendresponse(int fd, struct request *r)
 			}
 			return S_RANGE_NOT_SATISFIABLE;
 		}
+
+		/* adjust upper limit */
+		if (upper >= st.st_size)
+			upper = st.st_size-1;
 	}
 
 	/* mime */
