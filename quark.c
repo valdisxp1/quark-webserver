@@ -695,7 +695,7 @@ sendresponse(int fd, struct request *r)
 
 	/* range */
 	lower = 0;
-	upper = st.st_size;
+	upper = st.st_size - 1;
 
 	if (r->field[REQ_RANGE][0]) {
 		/* parse field */
