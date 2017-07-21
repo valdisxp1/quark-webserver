@@ -454,13 +454,13 @@ sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
 	            "Content-Length: %zu\r\n",
 	            s, status_str[s], timestamp(time(NULL), t1),
 	            timestamp(st->st_mtim.tv_sec, t2), mime,
-	            upper - lower + (st->st_size > 0)) < 0) {
+	            upper - lower + 1) < 0) {
 		s = S_REQUEST_TIMEOUT;
 		goto cleanup;
 	}
 	if (range) {
-		if (dprintf(fd, "Content-Range: bytes %zu-%zu/%zu\r\n",
-		            lower, upper, st->st_size) < 0) {
+		if (dprintf(fd, "Content-Range: bytes %zd-%zd/%zu\r\n",
+		            lower, upper + (upper < 0), st->st_size) < 0) {
 			s = S_REQUEST_TIMEOUT;
 			goto cleanup;
 		}
