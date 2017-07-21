@@ -19,8 +19,8 @@ static struct {
 	const char *dir;
 	regex_t re;
 } vhost[] = {
-	/* canonical host    host regex                 directory      */
-	{ "example.org",     "^(www.)example.org$",     "/example.org" },
+	/* canonical host      host regex                     directory      */
+	{ "example.org",       "^(www\.)?example.org$",       "/example.org" },
 };
 
 /* mime-types */
