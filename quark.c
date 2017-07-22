@@ -141,7 +141,7 @@ encode(char src[PATH_MAX], char dest[PATH_MAX])
 	size_t i;
 	char *s;
 
-	for (s = src, i = 0; *s; s++) {
+	for (s = src, i = 0; *s && i < (PATH_MAX - 4); s++) {
 		if (iscntrl(*s) || (unsigned char)*s > 127) {
 			i += snprintf(dest + i, PATH_MAX - i, "%%%02X",
 			              (unsigned char)*s);
@@ -150,6 +150,7 @@ encode(char src[PATH_MAX], char dest[PATH_MAX])
 			i++;
 		}
 	}
+	dest[i] = '\0';
 }
 
 static enum status
