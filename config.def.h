@@ -20,7 +20,7 @@ static struct {
 	regex_t re;
 } vhost[] = {
 	/* canonical host      host regex                     directory      */
-	{ "example.org",       "^(www\\.)?example.org$",      "/example.org" },
+	{ "example.org",       "^(www\\.)?example\\.org$",    "/example.org" },
 };
 
 /* mime-types */

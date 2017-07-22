@@ -1010,7 +1010,7 @@ main(int argc, char *argv[])
 	if (vhosts) {
 		for (i = 0; i < LEN(vhost); i++) {
 			if (regcomp(&vhost[i].re, vhost[i].regex,
-			            REG_ICASE | REG_NOSUB)) {
+			            REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
 				die("%s: regcomp '%s': invalid regex\n", argv0,
 				    vhost[i].regex);
 			}
