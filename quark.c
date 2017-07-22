@@ -1020,13 +1020,6 @@ main(int argc, char *argv[])
 		}
 	}
 
-	/* reap children automatically */
-	if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
-		fprintf(stderr, "%s: signal: Failed to set SIG_IGN on"
-		        "SIGCHLD\n", argv0);
-		return 1;
-	}
-
 	/* raise the process limit */
 	rlim.rlim_cur = rlim.rlim_max = maxnprocs;
 	if (setrlimit(RLIMIT_NPROC, &rlim) < 0) {
