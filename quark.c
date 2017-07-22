@@ -577,6 +577,9 @@ sendresponse(int fd, struct request *r)
 				break;
 			}
 		}
+		if (i == LEN(vhost)) {
+			return sendstatus(fd, S_NOT_FOUND);
+		}
 	}
 
 	/* normalize target */
