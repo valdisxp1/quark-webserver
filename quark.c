@@ -1055,9 +1055,9 @@ main(int argc, char *argv[])
 		break;
 	case 0:
 		/* reap children automatically */
-		if (signal(SIGINT, SIG_IGN) == SIG_ERR) {
+		if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
 			fprintf(stderr, "%s: signal: Failed to set SIG_IGN on"
-			        "SIGINT\n", argv0);
+			        "SIGCHLD\n", argv0);
 			return 1;
 		}
 
