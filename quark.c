@@ -916,14 +916,17 @@ getusock(char *udsname, uid_t uid, gid_t gid)
 	}
 
 	if (listen(insock, SOMAXCONN) < 0) {
+		cleanup();
 		die("%s: listen: %s\n", argv0, strerror(errno));
 	}
 
 	if (chmod(udsname, sockmode) < 0) {
+		cleanup();
 		die("%s: chmod: %s\n", argv0, strerror(errno));
 	}
 
 	if (chown(udsname, uid, gid) < 0) {
+		cleanup();
 		die("%s: chown: %s\n", argv0, strerror(errno));
 	}
 
@@ -1002,7 +1005,6 @@ main(int argc, char *argv[])
 		usage();
 	}
 
-	atexit(cleanup);
 	if (signal(SIGINT, sigcleanup) == SIG_ERR) {
 		fprintf(stderr, "%s: signal: Failed to handle SIGINT\n",
 		        argv0);
