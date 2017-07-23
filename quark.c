@@ -1023,9 +1023,7 @@ main(int argc, char *argv[])
 	/* raise the process limit */
 	rlim.rlim_cur = rlim.rlim_max = maxnprocs;
 	if (setrlimit(RLIMIT_NPROC, &rlim) < 0) {
-		fprintf(stderr, "%s: setrlimit RLIMIT_NPROC: %s\n", argv0,
-		        strerror(errno));
-		return 1;
+		die("%s: setrlimit RLIMIT_NPROC: %s\n", argv0, strerror(errno));
 	}
 
 	/* validate user and group */
@@ -1049,9 +1047,8 @@ main(int argc, char *argv[])
 	case 0:
 		/* reap children automatically */
 		if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
-			fprintf(stderr, "%s: signal: Failed to set SIG_IGN on"
-			        "SIGCHLD\n", argv0);
-			return 1;
+			die("%s: signal: Failed to set SIG_IGN on SIGCHLD\n",
+			    argv0);
 		}
 
 		/* chroot */
