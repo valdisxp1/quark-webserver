@@ -900,6 +900,7 @@ static void
 sigcleanup(int sig)
 {
 	cleanup();
+	kill(0, sig);
 	_exit(1);
 }
 
