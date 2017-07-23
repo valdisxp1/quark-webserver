@@ -890,6 +890,28 @@ getipsock(void)
 	return insock;
 }
 
+static void
+cleanup(void)
+{
+       close(insock);
+       if (udsname) {
+               if (unlink(udsname) < 0)
+                       fprintf(stderr, "unlink: %s\n", strerror(errno));
+}
+
+static void
+sigcleanup(int sig)
+{
+	cleanup();
+	_exit(1);
+}
+
+static void
+handlesignals(void(*hdl)(int))
+{
+	signal(SIGINT, hdl);
+}
+
 static int
 getusock(char *udsname, uid_t uid, gid_t gid)
 {
@@ -931,23 +953,6 @@ getusock(char *udsname, uid_t uid, gid_t gid)
 	}
 
 	return insock;
-}
-
-static void
-cleanup(void)
-{
-	close(insock);
-	if (udsname) {
-		if (unlink(udsname) < 0)
-			fprintf(stderr, "unlink: %s\n", strerror(errno));
-	}
-}
-
-static void
-sigcleanup(int sig)
-{
-	cleanup();
-	_exit(1);
 }
 
 static void
@@ -1005,12 +1010,6 @@ main(int argc, char *argv[])
 		usage();
 	}
 
-	if (signal(SIGINT, sigcleanup) == SIG_ERR) {
-		fprintf(stderr, "%s: signal: Failed to handle SIGINT\n",
-		        argv0);
-		return 1;
-	}
-
 	/* compile and check the supplied vhost regexes */
 	if (vhosts) {
 		for (i = 0; i < LEN(vhost); i++) {
@@ -1037,6 +1036,8 @@ main(int argc, char *argv[])
 	if (group && !(grp = getgrnam(group))) {
 		die("%s: invalid group %s\n", argv0, group);
 	}
+
+	handlesignals(sigcleanup);
 
 	/* bind socket */
 	insock = udsname ? getusock(udsname, pwd->pw_uid, grp->gr_gid) :
