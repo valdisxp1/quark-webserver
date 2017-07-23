@@ -29,7 +29,6 @@
 #include "arg.h"
 
 char *argv0;
-static int insock;
 static char *udsname;
 
 #include "config.h"
@@ -893,7 +892,6 @@ getipsock(void)
 static void
 cleanup(void)
 {
-       close(insock);
 	if (udsname)
 		 unlink(udsname);
 }
@@ -977,7 +975,7 @@ main(int argc, char *argv[])
 	struct group *grp = NULL;
 	struct rlimit rlim;
 	pid_t cpid, wpid;
-	int i, status = 0;
+	int i, insock, status = 0;
 
 	ARGBEGIN {
 	case 'd':
