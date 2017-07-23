@@ -894,9 +894,8 @@ static void
 cleanup(void)
 {
        close(insock);
-       if (udsname) {
-               if (unlink(udsname) < 0)
-                       fprintf(stderr, "unlink: %s\n", strerror(errno));
+	if (udsname)
+		 unlink(udsname);
 }
 
 static void
