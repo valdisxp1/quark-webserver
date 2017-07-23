@@ -1057,6 +1057,9 @@ main(int argc, char *argv[])
 		fprintf(stderr, "%s: fork: %s\n", argv0, strerror(errno));
 		break;
 	case 0:
+		/* restore default handlers */
+		handlesignals(SIG_DFL);
+
 		/* reap children automatically */
 		if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
 			die("%s: signal: Failed to set SIG_IGN on SIGCHLD\n",
