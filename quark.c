@@ -938,10 +938,8 @@ getusock(char *udsname, uid_t uid, gid_t gid)
 	}
 	memcpy(addr.sun_path, udsname, udsnamelen + 1);
 
-	unlink(udsname);
-
 	if (bind(insock, (const struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		die("%s: bind: %s\n", argv0, strerror(errno));
+		die("%s: bind %s: %s\n", argv0, udsname, strerror(errno));
 	}
 
 	if (listen(insock, SOMAXCONN) < 0) {
@@ -1015,6 +1013,11 @@ main(int argc, char *argv[])
 
 	if (argc) {
 		usage();
+	}
+
+	if (udsname && (!access(udsname, F_OK) || errno != ENOENT)) {
+		die("%s: socket file: %s\n",
+		    argv0, errno ? strerror(errno) : "file exists");
 	}
 
 	/* compile and check the supplied vhost regexes */
