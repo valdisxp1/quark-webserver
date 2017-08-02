@@ -561,9 +561,10 @@ sendresponse(int fd, struct request *r)
 	int hasport, ipv6host;
 	static char realtarget[PATH_MAX], tmptarget[PATH_MAX], t[TIMESTAMP_LEN];
 	char *p, *q, *mime;
-	const char *err;
+	const char *vhostmatch, *err;
 
 	/* match vhost */
+	vhostmatch = NULL;
 	if (vhosts) {
 		for (i = 0; i < LEN(vhost); i++) {
 			/* switch to vhost directory if there is a match */
@@ -573,6 +574,7 @@ sendresponse(int fd, struct request *r)
 					return sendstatus(fd, (errno == EACCES) ?
 					                  S_FORBIDDEN : S_NOT_FOUND);
 				}
+				vhostmatch = vhost[i].name;
 				break;
 			}
 		}
@@ -610,8 +612,8 @@ sendresponse(int fd, struct request *r)
 	}
 
 	/* redirect if targets differ or host is non-canonical */
-	if (strcmp(r->target, realtarget) || (vhosts && r->field[REQ_HOST][0] &&
-	    i < LEN(vhost) && strcmp(r->field[REQ_HOST], vhost[i].name))) {
+	if (strcmp(r->target, realtarget) || (vhosts && vhostmatch &&
+	    strcmp(r->field[REQ_HOST], vhostmatch))) {
 		/* do we need to add a port to the Location? */
 		hasport = strcmp(port, "80");
 
@@ -636,8 +638,8 @@ sendresponse(int fd, struct request *r)
 		            S_MOVED_PERMANENTLY,
 		            status_str[S_MOVED_PERMANENTLY],
 			    timestamp(time(NULL), t), ipv6host ? "[" : "",
-		            r->field[REQ_HOST][0] ? (vhosts && i < LEN(vhost)) ?
-			    vhost[i].name : r->field[REQ_HOST] : host,
+		            r->field[REQ_HOST][0] ? (vhosts && vhostmatch) ?
+			    vhostmatch : r->field[REQ_HOST] : host,
 		            ipv6host ? "]" : "", hasport ? ":" : "",
 		            hasport ? port : "", tmptarget) < 0) {
 			return S_REQUEST_TIMEOUT;
@@ -695,10 +697,10 @@ sendresponse(int fd, struct request *r)
 	/* range */
 	lower = 0;
 	upper = st.st_size - 1;
-
 	if (r->field[REQ_RANGE][0]) {
 		/* parse field */
 		p = r->field[REQ_RANGE];
+		err = NULL;
 
 		if (strncmp(p, "bytes=", sizeof("bytes=") - 1)) {
 			return sendstatus(fd, S_BAD_REQUEST);
