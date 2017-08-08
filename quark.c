@@ -829,7 +829,7 @@ serve(int insock)
 			shutdown(infd, SHUT_RD);
 			shutdown(infd, SHUT_WR);
 			close(infd);
-			_exit(0);
+			exit(0);
 		default:
 			/* close the connection in the parent */
 			close(infd);
@@ -1095,7 +1095,7 @@ main(int argc, char *argv[])
 		}
 
 		serve(insock);
-		_exit(0);
+		exit(0);
 	default:
 		while ((wpid = wait(&status)) > 0)
 			;
