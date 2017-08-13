@@ -13,4 +13,4 @@ CFLAGS   = -std=c99 -pedantic -Wall -Os
 LDFLAGS  = -s
 
 # compiler and linker
-CC = clang
+CC = cc
