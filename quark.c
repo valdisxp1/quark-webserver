@@ -1,4 +1,5 @@
 /* See LICENSE file for license details. */
+#include <netinet/in.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -418,7 +419,7 @@ cleanup:
 }
 
 static enum status
-sendfile(int fd, char *name, struct request *r, struct stat *st, char *mime,
+responsefile(int fd, char *name, struct request *r, struct stat *st, char *mime,
          off_t lower, off_t upper)
 {
 	FILE *fp;
@@ -754,7 +755,7 @@ sendresponse(int fd, struct request *r)
 		}
 	}
 
-	return sendfile(fd, RELPATH(realtarget), r, &st, mime, lower, upper);
+	return responsefile(fd, RELPATH(realtarget), r, &st, mime, lower, upper);
 }
 
 static void
