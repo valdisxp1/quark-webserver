@@ -1,4 +1,4 @@
-/* See LICENSE file for license details. */
+/* See LICENSE file for copyright and license details. */
 #include <netinet/in.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
