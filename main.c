@@ -198,11 +198,13 @@ main(int argc, char *argv[])
 	/* validate user and group */
 	errno = 0;
 	if (user && !(pwd = getpwnam(user))) {
-		die("getpwnam '%s':", user);
+		die("getpwnam '%s': %s", user, errno ? strerror(errno) :
+		    "Entry not found");
 	}
 	errno = 0;
 	if (group && !(grp = getgrnam(group))) {
-		die("getgrnam '%s':", group);
+		die("getgrnam '%s': %s", group, errno ? strerror(errno) :
+		    "Entry not found");
 	}
 
 	handlesignals(sigcleanup);
@@ -243,10 +245,10 @@ main(int argc, char *argv[])
 			die("setuid:");
 		}
 		if (getuid() == 0) {
-			die("won't run as root user", argv0);
+			die("Won't run as root user", argv0);
 		}
 		if (getgid() == 0) {
-			die("won't run as root group", argv0);
+			die("Won't run as root group", argv0);
 		}
 
 		serve(insock);
