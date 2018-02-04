@@ -4,22 +4,30 @@
 
 include config.mk
 
+COMPONENTS = util sock http resp
+
 all: quark
 
-quark: quark.c arg.h config.h config.mk
-	$(CC) -o $@ $(CPPFLAGS) $(CFLAGS) quark.c $(LDFLAGS)
+util.o: util.c util.h config.mk
+sock.o: sock.c sock.h util.h config.mk
+http.o: http.c http.h util.h http.h resp.h config.h config.mk
+resp.o: resp.c resp.h util.h http.h config.mk
+main.o: main.c util.h sock.h http.h arg.h config.h config.mk
+
+quark: $(COMPONENTS:=.o) $(COMPONENTS:=.h) main.o config.mk
+	$(CC) -o $@ $(CPPFLAGS) $(CFLAGS) $(COMPONENTS:=.o) main.o $(LDFLAGS)
 
 config.h:
 	cp config.def.h $@
 
 clean:
-	rm -f quark
+	rm -f quark main.o $(COMPONENTS:=.o)
 
 dist:
 	rm -rf "quark-$(VERSION)"
 	mkdir -p "quark-$(VERSION)"
 	cp -R LICENSE Makefile arg.h config.def.h config.mk quark.1 \
-		quark.c "quark-$(VERSION)"
+		$(COMPONENTS:=.c) $(COMPONENTS:=.h) main.c "quark-$(VERSION)"
 	tar -cf - "quark-$(VERSION)" | gzip -c > "quark-$(VERSION).tar.gz"
 	rm -rf "quark-$(VERSION)"
 
