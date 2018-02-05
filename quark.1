@@ -1,4 +1,4 @@
-.Dd 2017-07-11
+.Dd 2018-02-05
 .Dt QUARK 1
 .Sh NAME
 .Nm quark
@@ -50,9 +50,10 @@ Set user ID to the ID of
 when dropping privileges.
 .It Fl U Ar sockfile
 Create the UNIX-domain socket file
-.Ar sockfile
-and listen on it for incoming connections.
-The file will be cleaned up at exit.
+.Ar sockfile ,
+listen on it for incoming connections and remove it on exit.
+Its user and group owners are equal to the user and group IDs used for dropping
+privileges to.
 .It Fl v
 Disable virtual hosts.
 .It Fl V
