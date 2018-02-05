@@ -24,68 +24,41 @@
 static char *udsname;
 
 static void
-serve(int insock)
+serve(int infd, struct sockaddr_storage *in_sa)
 {
 	struct request r;
-	struct sockaddr_storage in_sa;
-	pid_t p;
-	socklen_t in_sa_len;
 	time_t t;
 	enum status status;
-	int infd;
 	char inaddr[INET6_ADDRSTRLEN /* > INET_ADDRSTRLEN */];
 	char tstmp[25];
 
-	while (1) {
-		/* accept incoming connections */
-		in_sa_len = sizeof(in_sa);
-		if ((infd = accept(insock, (struct sockaddr *)&in_sa,
-		                   &in_sa_len)) < 0) {
-			warn("accept:");
-			continue;
-		}
-
-		/* fork and handle */
-		switch ((p = fork())) {
-		case -1:
-			warn("fork:");
-			break;
-		case 0:
-			close(insock);
-
-			/* set connection timeout */
-			if (sock_set_timeout(infd, 30)) {
-				goto cleanup;
-			}
-
-			/* handle request */
-			if (!(status = http_get_request(infd, &r))) {
-				status = http_send_response(infd, &r);
-			}
-
-			/* write output to log */
-			t = time(NULL);
-			if (!strftime(tstmp, sizeof(tstmp), "%Y-%m-%dT%H:%M:%S",
-			              gmtime(&t))) {
-				warn("strftime: Exceeded buffer capacity");
-				goto cleanup;
-			}
-			if (sock_get_inaddr_str(&in_sa, inaddr, LEN(inaddr))) {
-				goto cleanup;
-			}
-			printf("%s\t%s\t%d\t%s\t%s\n", tstmp, inaddr, status,
-			       r.field[REQ_HOST], r.target);
-cleanup:
-			/* clean up and finish */
-			shutdown(infd, SHUT_RD);
-			shutdown(infd, SHUT_WR);
-			close(infd);
-			exit(0);
-		default:
-			/* close the connection in the parent */
-			close(infd);
-		}
+	/* set connection timeout */
+	if (sock_set_timeout(infd, 30)) {
+		goto cleanup;
 	}
+
+	/* handle request */
+	if (!(status = http_get_request(infd, &r))) {
+		status = http_send_response(infd, &r);
+	}
+
+	/* write output to log */
+	t = time(NULL);
+	if (!strftime(tstmp, sizeof(tstmp), "%Y-%m-%dT%H:%M:%S",
+	              gmtime(&t))) {
+		warn("strftime: Exceeded buffer capacity");
+		goto cleanup;
+	}
+	if (sock_get_inaddr_str(in_sa, inaddr, LEN(inaddr))) {
+		goto cleanup;
+	}
+	printf("%s\t%s\t%d\t%s\t%s\n", tstmp, inaddr, status,
+	       r.field[REQ_HOST], r.target);
+cleanup:
+	/* clean up and finish */
+	shutdown(infd, SHUT_RD);
+	shutdown(infd, SHUT_WR);
+	close(infd);
 }
 
 static void
@@ -128,11 +101,13 @@ usage(void)
 int
 main(int argc, char *argv[])
 {
-	struct passwd *pwd = NULL;
 	struct group *grp = NULL;
+	struct passwd *pwd = NULL;
 	struct rlimit rlim;
-	pid_t cpid, wpid;
-	int i, insock, status = 0;
+	struct sockaddr_storage in_sa;
+	pid_t cpid, wpid, spid;
+	socklen_t in_sa_len;
+	int i, insock, status = 0, infd;
 
 	ARGBEGIN {
 	case 'd':
@@ -251,7 +226,28 @@ main(int argc, char *argv[])
 			die("Won't run as root group", argv0);
 		}
 
-		serve(insock);
+		/* accept incoming connections */
+		while (1) {
+			in_sa_len = sizeof(in_sa);
+			if ((infd = accept(insock, (struct sockaddr *)&in_sa,
+			                   &in_sa_len)) < 0) {
+				warn("accept:");
+				continue;
+			}
+
+			/* fork and handle */
+			switch ((spid = fork())) {
+			case -1:
+				warn("fork:");
+				continue;
+			case 0:
+				serve(infd, &in_sa);
+				break;
+			default:
+				/* close the connection in the parent */
+				close(infd);
+			}
+		}
 		exit(0);
 	default:
 		while ((wpid = wait(&status)) > 0)
