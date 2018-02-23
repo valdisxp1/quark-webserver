@@ -237,13 +237,13 @@ main(int argc, char *argv[])
 
 			/* fork and handle */
 			switch ((spid = fork())) {
-			case -1:
-				warn("fork:");
-				continue;
 			case 0:
 				serve(infd, &in_sa);
 				exit(0);
 				break;
+			case -1:
+				warn("fork:");
+				/* fallthrough */
 			default:
 				/* close the connection in the parent */
 				close(infd);
