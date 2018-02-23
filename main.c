@@ -242,6 +242,7 @@ main(int argc, char *argv[])
 				continue;
 			case 0:
 				serve(infd, &in_sa);
+				exit(0);
 				break;
 			default:
 				/* close the connection in the parent */
