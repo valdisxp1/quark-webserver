@@ -391,7 +391,7 @@ http_send_response(int fd, struct request *r)
 		            "HTTP/1.1 %d %s\r\n"
 		            "Date: %s\r\n"
 		            "Connection: close\r\n"
-		            "Location: http://%s%s%s%s%s%s\r\n"
+		            "Location: //%s%s%s%s%s%s\r\n"
 		            "\r\n",
 		            S_MOVED_PERMANENTLY,
 		            status_str[S_MOVED_PERMANENTLY],
