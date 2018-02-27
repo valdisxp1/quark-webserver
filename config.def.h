@@ -22,7 +22,7 @@ static struct {
 } vhost[] = {
 	/* canonical host    host regex                     directory         prefix */
 	{ "example.org",     "^(www\\.)?example\\.org$",    "/example.org",   NULL   },
-	{ "example.org",     "old\\.example\\.org",         "/",              "/old" },
+	{ "example.org",     "^old\\.example\\.org$",       "/",              "/old" },
 };
 
 /* target prefix mapping */
