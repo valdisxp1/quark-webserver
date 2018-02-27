@@ -25,6 +25,16 @@ static struct {
 	{ "example.org",     "old\\.example\\.org",         "/",              "/old" },
 };
 
+/* target prefix mapping */
+static const struct {
+	const char *vhost;
+	const char *from;
+	const char *to;
+} map[] = {
+	/* canonical host    from                   to                 */
+	{ "example.org",     "/old/path/to/dir",    "/new/path/to/dir" },
+};
+
 /* mime-types */
 static const struct {
 	char *ext;

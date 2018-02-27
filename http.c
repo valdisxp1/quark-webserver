@@ -351,6 +351,24 @@ http_send_response(int fd, struct request *r)
 		}
 	}
 
+	/* apply target prefix mapping */
+	for (i = 0; i < LEN(map); i++) {
+		len = strlen(map[i].from);
+		if (!strncmp(realtarget, map[i].from, len)) {
+			/* match canonical host if vhosts are enabled */
+			if (vhosts && strcmp(map[i].vhost, vhostmatch)) {
+				continue;
+			}
+
+			/* swap out target prefix */
+			if (snprintf(realtarget, sizeof(realtarget), "%s%s", map[i].to,
+			             realtarget + len) >= sizeof(realtarget)) {
+				return http_send_status(fd, S_REQUEST_TOO_LARGE);
+			}
+			break;
+		}
+	}
+
 	/* normalize target */
 	if (normabspath(realtarget)) {
 		return http_send_status(fd, S_BAD_REQUEST);
