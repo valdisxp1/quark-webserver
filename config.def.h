@@ -17,10 +17,12 @@ static struct {
 	const char *name;
 	const char *regex;
 	const char *dir;
+	const char *prefix;
 	regex_t re;
 } vhost[] = {
-	/* canonical host      host regex                     directory      */
-	{ "example.org",       "^(www\\.)?example\\.org$",    "/example.org" },
+	/* canonical host    host regex                     directory         prefix */
+	{ "example.org",     "^(www\\.)?example\\.org$",    "/example.org",   NULL   },
+	{ "example.org",     "old\\.example\\.org",         "/",              "/old" },
 };
 
 /* mime-types */

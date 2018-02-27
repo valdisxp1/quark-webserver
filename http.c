@@ -320,6 +320,9 @@ http_send_response(int fd, struct request *r)
 	char *p, *q, *mime;
 	const char *vhostmatch, *err;
 
+	/* make a working copy of the target */
+	memcpy(realtarget, r->target, sizeof(realtarget));
+
 	/* match vhost */
 	vhostmatch = NULL;
 	if (vhosts) {
@@ -338,10 +341,17 @@ http_send_response(int fd, struct request *r)
 		if (i == LEN(vhost)) {
 			return http_send_status(fd, S_NOT_FOUND);
 		}
+
+		/* if we have a vhost prefix, prepend it to the target */
+		if (vhost[i].prefix) {
+			if (snprintf(realtarget, sizeof(realtarget), "%s%s",
+			    vhost[i].prefix, realtarget) >= sizeof(realtarget)) {
+				return http_send_status(fd, S_REQUEST_TOO_LARGE);
+			}
+		}
 	}
 
 	/* normalize target */
-	memcpy(realtarget, r->target, sizeof(realtarget));
 	if (normabspath(realtarget)) {
 		return http_send_status(fd, S_BAD_REQUEST);
 	}
@@ -369,7 +379,7 @@ http_send_response(int fd, struct request *r)
 		}
 	}
 
-	/* redirect if targets differ or host is non-canonical */
+	/* redirect if targets differ, host is non-canonical or we prefixed */
 	if (strcmp(r->target, realtarget) || (vhosts && vhostmatch &&
 	    strcmp(r->field[REQ_HOST], vhostmatch))) {
 		/* do we need to add a port to the Location? */
