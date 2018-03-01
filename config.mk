@@ -8,7 +8,7 @@ PREFIX = /usr/local
 MANPREFIX = $(PREFIX)/share/man
 
 # flags
-CPPFLAGS = -DVERSION=\"$(VERSION)\" -D_DEFAULT_SOURCE -D_BSD_SOURCE
+CPPFLAGS = -DVERSION=\"$(VERSION)\" -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -D_BSD_SOURCE
 CFLAGS   = -std=c99 -pedantic -Wno-unused-variable -Wno-implicit-function-declaration -Wall -Os
 LDFLAGS  = -s
 
