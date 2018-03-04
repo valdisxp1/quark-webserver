@@ -346,8 +346,8 @@ http_send_response(int fd, struct request *r)
 
 		/* if we have a vhost prefix, prepend it to the target */
 		if (s.vhost[i].prefix) {
-			if ((size_t)snprintf(realtarget, sizeof(realtarget), "%s%s",
-			    s.vhost[i].prefix, realtarget) >= sizeof(realtarget)) {
+			if (esnprintf(realtarget, sizeof(realtarget), "%s%s",
+			              s.vhost[i].prefix, realtarget)) {
 				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 		}
@@ -363,8 +363,8 @@ http_send_response(int fd, struct request *r)
 			}
 
 			/* swap out target prefix */
-			if ((size_t)snprintf(tmptarget, sizeof(tmptarget), "%s%s",
-			    s.map[i].to, realtarget + len) >= sizeof(tmptarget)) {
+			if (esnprintf(tmptarget, sizeof(tmptarget), "%s%s",
+			              s.map[i].to, realtarget + len)) {
 				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 			memcpy(realtarget, tmptarget, sizeof(realtarget));
@@ -441,8 +441,8 @@ http_send_response(int fd, struct request *r)
 
 	if (S_ISDIR(st.st_mode)) {
 		/* append docindex to target */
-		if ((size_t)snprintf(realtarget, sizeof(realtarget), "%s%s",
-		    r->target, s.docindex) >= sizeof(realtarget)) {
+		if (esnprintf(realtarget, sizeof(realtarget), "%s%s",
+		              r->target, s.docindex)) {
 			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
 

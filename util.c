@@ -61,6 +61,19 @@ timestamp(time_t t, char buf[TIMESTAMP_LEN])
 	return buf;
 }
 
+int
+esnprintf(char *str, size_t size, const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, fmt);
+	ret = vsnprintf(str, size, fmt, ap);
+	va_end(ap);
+
+	return (ret < 0 || (size_t)ret >= size);
+}
+
 #define	INVALID  1
 #define	TOOSMALL 2
 #define	TOOLARGE 3

@@ -49,6 +49,7 @@ void die(const char *, ...);
 #define TIMESTAMP_LEN 30
 
 char *timestamp(time_t, char buf[TIMESTAMP_LEN]);
+int esnprintf(char *, size_t, const char *, ...);
 
 void *reallocarray(void *, size_t, size_t);
 long long strtonum(const char *, long long, long long, const char **);
