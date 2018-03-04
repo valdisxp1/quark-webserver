@@ -75,7 +75,7 @@ resp_dir(int fd, char *name, struct request *r)
 		}
 
 		/* listing */
-		for (i = 0; i < dirlen; i++) {
+		for (i = 0; i < (size_t)dirlen; i++) {
 			/* skip hidden files, "." and ".." */
 			if (e[i]->d_name[0] == '.') {
 				continue;
@@ -165,7 +165,8 @@ resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		/* write data until upper bound is hit */
 		remaining = upper - lower + 1;
 
-		while ((bread = fread(buf, 1, MIN(sizeof(buf), remaining), fp))) {
+		while ((bread = fread(buf, 1, MIN(sizeof(buf),
+		                      (size_t)remaining), fp))) {
 			if (bread < 0) {
 				return S_INTERNAL_SERVER_ERROR;
 			}

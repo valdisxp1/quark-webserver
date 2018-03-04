@@ -109,8 +109,9 @@ main(int argc, char *argv[])
 	struct rlimit rlim;
 	struct sockaddr_storage in_sa;
 	pid_t cpid, wpid, spid;
+	size_t i;
 	socklen_t in_sa_len;
-	int i, insock, status = 0, infd;
+	int insock, status = 0, infd;
 	const char *err;
 	char *tok;
 
