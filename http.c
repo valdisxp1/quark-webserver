@@ -325,46 +325,47 @@ http_send_response(int fd, struct request *r)
 
 	/* match vhost */
 	vhostmatch = NULL;
-	if (vhosts) {
-		for (i = 0; i < LEN(vhost); i++) {
+	if (s.vhost) {
+		for (i = 0; i < s.vhost_len; i++) {
 			/* switch to vhost directory if there is a match */
-			if (!regexec(&vhost[i].re, r->field[REQ_HOST], 0,
+			if (!regexec(&s.vhost[i].re, r->field[REQ_HOST], 0,
 			             NULL, 0)) {
-				if (chdir(vhost[i].dir) < 0) {
+				if (chdir(s.vhost[i].dir) < 0) {
 					return http_send_status(fd, (errno == EACCES) ?
 					                        S_FORBIDDEN : S_NOT_FOUND);
 				}
-				vhostmatch = vhost[i].name;
+				vhostmatch = s.vhost[i].name;
 				break;
 			}
 		}
-		if (i == LEN(vhost)) {
+		if (i == s.vhost_len) {
 			return http_send_status(fd, S_NOT_FOUND);
 		}
 
 		/* if we have a vhost prefix, prepend it to the target */
-		if (vhost[i].prefix) {
+		if (s.vhost[i].prefix) {
 			if (snprintf(realtarget, sizeof(realtarget), "%s%s",
-			    vhost[i].prefix, realtarget) >= sizeof(realtarget)) {
+			    s.vhost[i].prefix, realtarget) >= sizeof(realtarget)) {
 				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 		}
 	}
 
 	/* apply target prefix mapping */
-	for (i = 0; i < LEN(map); i++) {
-		len = strlen(map[i].from);
-		if (!strncmp(realtarget, map[i].from, len)) {
+	for (i = 0; i < s.map_len; i++) {
+		len = strlen(s.map[i].from);
+		if (!strncmp(realtarget, s.map[i].from, len)) {
 			/* match canonical host if vhosts are enabled */
-			if (vhosts && strcmp(map[i].vhost, vhostmatch)) {
+			if (s.vhost && strcmp(s.map[i].chost, vhostmatch)) {
 				continue;
 			}
 
 			/* swap out target prefix */
-			if (snprintf(realtarget, sizeof(realtarget), "%s%s", map[i].to,
-			             realtarget + len) >= sizeof(realtarget)) {
+			if (snprintf(tmptarget, sizeof(tmptarget), "%s%s", s.map[i].to,
+			             realtarget + len) >= sizeof(tmptarget)) {
 				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
+			memcpy(realtarget, tmptarget, sizeof(realtarget));
 			break;
 		}
 	}
@@ -398,16 +399,17 @@ http_send_response(int fd, struct request *r)
 	}
 
 	/* redirect if targets differ, host is non-canonical or we prefixed */
-	if (strcmp(r->target, realtarget) || (vhosts && vhostmatch &&
+	if (strcmp(r->target, realtarget) || (s.vhost && vhostmatch &&
 	    strcmp(r->field[REQ_HOST], vhostmatch))) {
 		/* do we need to add a port to the Location? */
-		hasport = strcmp(port, "80");
+		hasport = s.port && strcmp(s.port, "80");
 
 		/* RFC 2732 specifies to use brackets for IPv6-addresses in
 		 * URLs, so we need to check if our host is one and honor that
 		 * later when we fill the "Location"-field */
 		if ((ipv6host = inet_pton(AF_INET6, r->field[REQ_HOST][0] ?
-		                          r->field[REQ_HOST] : host, &res)) < 0) {
+		                          r->field[REQ_HOST] : s.host ? s.host :
+		                          "localhost", &res)) < 0) {
 			return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
 		}
 
@@ -424,10 +426,11 @@ http_send_response(int fd, struct request *r)
 		            S_MOVED_PERMANENTLY,
 		            status_str[S_MOVED_PERMANENTLY],
 			    timestamp(time(NULL), t), ipv6host ? "[" : "",
-		            r->field[REQ_HOST][0] ? (vhosts && vhostmatch) ?
-			    vhostmatch : r->field[REQ_HOST] : host,
+		            r->field[REQ_HOST][0] ? (s.vhost && vhostmatch) ?
+			    vhostmatch : r->field[REQ_HOST] : s.host ?
+		            s.host : "localhost",
 		            ipv6host ? "]" : "", hasport ? ":" : "",
-		            hasport ? port : "", tmptarget) < 0) {
+		            hasport ? s.port : "", tmptarget) < 0) {
 			return S_REQUEST_TIMEOUT;
 		}
 
@@ -437,16 +440,16 @@ http_send_response(int fd, struct request *r)
 	if (S_ISDIR(st.st_mode)) {
 		/* append docindex to target */
 		if (snprintf(realtarget, sizeof(realtarget), "%s%s",
-		             r->target, docindex) >= sizeof(realtarget)) {
+		             r->target, s.docindex) >= sizeof(realtarget)) {
 			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
 
 		/* stat the docindex, which must be a regular file */
 		if (stat(RELPATH(realtarget), &st) < 0 || !S_ISREG(st.st_mode)) {
-			if (listdirs) {
+			if (s.listdirs) {
 				/* remove index suffix and serve dir */
 				realtarget[strlen(realtarget) -
-				           strlen(docindex)] = '\0';
+				           strlen(s.docindex)] = '\0';
 				return resp_dir(fd, RELPATH(realtarget), r);
 			} else {
 				/* reject */

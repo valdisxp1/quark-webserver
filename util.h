@@ -2,9 +2,37 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include <regex.h>
+#include <stddef.h>
 #include <time.h>
 
 #include "arg.h"
+
+/* main server struct */
+struct vhost {
+	char *name;
+	char *regex;
+	char *dir;
+	char *prefix;
+	regex_t re;
+};
+
+struct map {
+	char *chost;
+	char *from;
+	char *to;
+};
+
+extern struct server {
+	char *host;
+	char *port;
+	char *docindex;
+	int listdirs;
+	struct vhost *vhost;
+	size_t vhost_len;
+	struct map *map;
+	size_t map_len;
+} s;
 
 #undef MIN
 #define MIN(x,y)  ((x) < (y) ? (x) : (y))
@@ -18,10 +46,11 @@ extern char *argv0;
 void warn(const char *, ...);
 void die(const char *, ...);
 
-long long strtonum(const char *, long long, long long, const char **);
-
 #define TIMESTAMP_LEN 30
 
 char *timestamp(time_t, char buf[TIMESTAMP_LEN]);
+
+void *reallocarray(void *, size_t, size_t);
+long long strtonum(const char *, long long, long long, const char **);
 
 #endif /* UTIL_H */

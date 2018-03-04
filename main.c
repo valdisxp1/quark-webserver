@@ -1,6 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 #include <errno.h>
 #include <grp.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <pwd.h>
 #include <regex.h>
@@ -18,8 +19,6 @@
 #include "http.h"
 #include "sock.h"
 #include "util.h"
-
-#include "config.h"
 
 static char *udsname;
 
@@ -94,8 +93,12 @@ handlesignals(void(*hdl)(int))
 static void
 usage(void)
 {
-	die("usage: %s [-l | -L] [-v | -V] [[[-h host] [-p port]] | [-U sockfile]] "
-	    "[-d dir] [-u user] [-g group]", argv0);
+	const char *opts = "[-u user] [-g group] [-n num] [-d dir] [-l] "
+	                   "[-i index] [-v vhost] ... [-m map] ...";
+
+	die("usage: %s -h host    -p port  %s\n"
+	    "       %s -U socket [-p port] %s", argv0,
+	    opts, argv0, opts);
 }
 
 int
@@ -108,37 +111,86 @@ main(int argc, char *argv[])
 	pid_t cpid, wpid, spid;
 	socklen_t in_sa_len;
 	int i, insock, status = 0, infd;
+	const char *err;
+	char *tok;
+
+	/* defaults */
+	int maxnprocs = 512;
+	char *servedir = ".";
+	char *user = "nobody";
+	char *group = "nogroup";
+
+	s.host = s.port = NULL;
+	s.vhost = NULL;
+	s.map = NULL;
+	s.vhost_len = s.map_len = 0;
+	s.docindex = "index.html";
+	s.listdirs = 0;
 
 	ARGBEGIN {
-	case 'd':
-		servedir = EARGF(usage());
-		break;
-	case 'g':
-		group = EARGF(usage());
-		break;
 	case 'h':
-		host = EARGF(usage());
-		break;
-	case 'l':
-		listdirs = 0;
-		break;
-	case 'L':
-		listdirs = 1;
+		s.host = EARGF(usage());
 		break;
 	case 'p':
-		port = EARGF(usage());
-		break;
-	case 'u':
-		user = EARGF(usage());
+		s.port = EARGF(usage());
 		break;
 	case 'U':
 		udsname = EARGF(usage());
 		break;
-	case 'v':
-		vhosts = 0;
+	case 'u':
+		user = EARGF(usage());
 		break;
-	case 'V':
-		vhosts = 1;
+	case 'g':
+		group = EARGF(usage());
+		break;
+	case 'n':
+		maxnprocs = strtonum(EARGF(usage()), 1, INT_MAX, &err);
+		if (err) {
+			die("strtonum '%s': %s", EARGF(usage()), err);
+		}
+		break;
+	case 'd':
+		servedir = EARGF(usage());
+		break;
+	case 'l':
+		s.listdirs = 1;
+		break;
+	case 'i':
+		s.docindex = EARGF(usage());
+		if (strchr(s.docindex, '/')) {
+			die("The document index must not contain '/'");
+		}
+		break;
+	case 'v':
+		if (!(tok = strdup(EARGF(usage())))) {
+			die("strdup:");
+		}
+		if (!(s.vhost = reallocarray(s.vhost, s.vhost_len++,
+		                             sizeof(struct vhost)))) {
+			die("reallocarray:");
+		}
+		if (!(s.vhost[s.vhost_len - 1].name   = strtok(tok,  " ")) ||
+		    !(s.vhost[s.vhost_len - 1].regex  = strtok(NULL, " ")) ||
+		    !(s.vhost[s.vhost_len - 1].dir    = strtok(NULL, " ")) ||
+		    !(s.vhost[s.vhost_len - 1].prefix = strtok(NULL, " ")) ||
+		    strtok(NULL, "")) {
+			usage();
+		}
+		break;
+	case 'm':
+		if (!(tok = strdup(EARGF(usage())))) {
+			die("strdup:");
+		}
+		if (!(s.map = reallocarray(s.map, s.map_len++,
+		                           sizeof(struct map)))) {
+			die("reallocarray:");
+		}
+		if (!(s.map[s.map_len - 1].chost = strtok(tok,  " ")) ||
+		    !(s.map[s.map_len - 1].from  = strtok(NULL, " ")) ||
+		    !(s.map[s.map_len - 1].to    = strtok(NULL, " ")) ||
+		    strtok(NULL, "")) {
+			usage();
+		}
 		break;
 	default:
 		usage();
@@ -148,19 +200,22 @@ main(int argc, char *argv[])
 		usage();
 	}
 
+	/* allow either host or UNIX-domain socket, force port with host */
+	if ((s.host && udsname) || (s.host && !s.port)) {
+		usage();
+	}
+
 	if (udsname && (!access(udsname, F_OK) || errno != ENOENT)) {
 		die("UNIX-domain socket: %s", errno ?
 		    strerror(errno) : "file exists");
 	}
 
 	/* compile and check the supplied vhost regexes */
-	if (vhosts) {
-		for (i = 0; i < LEN(vhost); i++) {
-			if (regcomp(&vhost[i].re, vhost[i].regex,
-			            REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
-				die("regcomp '%s': invalid regex",
-				    vhost[i].regex);
-			}
+	for (i = 0; i < s.vhost_len; i++) {
+		if (regcomp(&s.vhost[i].re, s.vhost[i].regex,
+		            REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
+			die("regcomp '%s': invalid regex",
+			    s.vhost[i].regex);
 		}
 	}
 
@@ -186,7 +241,7 @@ main(int argc, char *argv[])
 
 	/* bind socket */
 	insock = udsname ? sock_get_uds(udsname, pwd->pw_uid, grp->gr_gid) :
-	                   sock_get_ips(host, port);
+	                   sock_get_ips(s.host, s.port);
 
 	switch (cpid = fork()) {
 	case -1:

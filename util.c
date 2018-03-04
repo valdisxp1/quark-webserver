@@ -2,14 +2,17 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <time.h>
 
 #include "util.h"
 
 char *argv0;
+struct server s = { 0 };
 
 static void
 verr(const char *fmt, va_list ap)
@@ -48,6 +51,14 @@ die(const char *fmt, ...)
 	va_end(ap);
 
 	exit(1);
+}
+
+char *
+timestamp(time_t t, char buf[TIMESTAMP_LEN])
+{
+	strftime(buf, TIMESTAMP_LEN, "%a, %d %b %Y %T GMT", gmtime(&t));
+
+	return buf;
 }
 
 #define	INVALID  1
@@ -93,10 +104,19 @@ strtonum(const char *numstr, long long minval, long long maxval,
 	return ll;
 }
 
-char *
-timestamp(time_t t, char buf[TIMESTAMP_LEN])
-{
-	strftime(buf, TIMESTAMP_LEN, "%a, %d %b %Y %T GMT", gmtime(&t));
+/*
+ * This is sqrt(SIZE_MAX+1), as s1*s2 <= SIZE_MAX
+ * if both s1 < MUL_NO_OVERFLOW and s2 < MUL_NO_OVERFLOW
+ */
+#define MUL_NO_OVERFLOW	((size_t)1 << (sizeof(size_t) * 4))
 
-	return buf;
+void *
+reallocarray(void *optr, size_t nmemb, size_t size)
+{
+	if ((nmemb >= MUL_NO_OVERFLOW || size >= MUL_NO_OVERFLOW) &&
+	    nmemb > 0 && SIZE_MAX / nmemb < size) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	return realloc(optr, size * nmemb);
 }
