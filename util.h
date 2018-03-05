@@ -10,7 +10,7 @@
 
 /* main server struct */
 struct vhost {
-	char *name;
+	char *chost;
 	char *regex;
 	char *dir;
 	char *prefix;

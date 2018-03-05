@@ -336,7 +336,7 @@ http_send_response(int fd, struct request *r)
 					return http_send_status(fd, (errno == EACCES) ?
 					                        S_FORBIDDEN : S_NOT_FOUND);
 				}
-				vhostmatch = s.vhost[i].name;
+				vhostmatch = s.vhost[i].chost;
 				break;
 			}
 		}

@@ -94,10 +94,10 @@ static void
 usage(void)
 {
 	const char *opts = "[-u user] [-g group] [-n num] [-d dir] [-l] "
-	                   "[-i index] [-v vhost] ... [-m map] ...";
+	                   "[-i file] [-v vhost] ... [-m map] ...";
 
-	die("usage: %s -h host    -p port  %s\n"
-	    "       %s -U socket [-p port] %s", argv0,
+	die("usage: %s -h host -p port %s\n"
+	    "       %s -U file [-p port] %s", argv0,
 	    opts, argv0, opts);
 }
 
@@ -170,7 +170,7 @@ main(int argc, char *argv[])
 		                             sizeof(struct vhost)))) {
 			die("reallocarray:");
 		}
-		if (!(s.vhost[s.vhost_len - 1].name   = strtok(tok,  " ")) ||
+		if (!(s.vhost[s.vhost_len - 1].chost  = strtok(tok,  " ")) ||
 		    !(s.vhost[s.vhost_len - 1].regex  = strtok(NULL, " ")) ||
 		    !(s.vhost[s.vhost_len - 1].dir    = strtok(NULL, " ")) ||
 		    !(s.vhost[s.vhost_len - 1].prefix = strtok(NULL, " ")) ||
