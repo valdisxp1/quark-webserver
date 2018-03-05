@@ -346,10 +346,11 @@ http_send_response(int fd, struct request *r)
 
 		/* if we have a vhost prefix, prepend it to the target */
 		if (s.vhost[i].prefix) {
-			if (esnprintf(realtarget, sizeof(realtarget), "%s%s",
+			if (esnprintf(tmptarget, sizeof(tmptarget), "%s%s",
 			              s.vhost[i].prefix, realtarget)) {
 				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
+			memcpy(realtarget, tmptarget, sizeof(realtarget));
 		}
 	}
 
