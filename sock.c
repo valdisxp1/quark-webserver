@@ -1,6 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
