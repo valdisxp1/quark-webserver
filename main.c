@@ -201,8 +201,8 @@ main(int argc, char *argv[])
 		usage();
 	}
 
-	/* allow either host or UNIX-domain socket, force port with host */
-	if ((s.host && udsname) || (s.host && !s.port)) {
+	/* allow host xor UNIX-domain socket, force port with host */
+	if ((!s.host == !udsname) || (s.host && !s.port)) {
 		usage();
 	}
 
