@@ -29,7 +29,7 @@ serve(int infd, struct sockaddr_storage *in_sa)
 	time_t t;
 	enum status status;
 	char inaddr[INET6_ADDRSTRLEN /* > INET_ADDRSTRLEN */];
-	char tstmp[25];
+	char tstmp[21];
 
 	/* set connection timeout */
 	if (sock_set_timeout(infd, 30)) {
@@ -43,7 +43,7 @@ serve(int infd, struct sockaddr_storage *in_sa)
 
 	/* write output to log */
 	t = time(NULL);
-	if (!strftime(tstmp, sizeof(tstmp), "%Y-%m-%dT%H:%M:%S",
+	if (!strftime(tstmp, sizeof(tstmp), "%Y-%m-%dT%H:%M:%SZ",
 	              gmtime(&t))) {
 		warn("strftime: Exceeded buffer capacity");
 		goto cleanup;
