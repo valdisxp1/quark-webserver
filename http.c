@@ -95,6 +95,7 @@ decode(char src[PATH_MAX], char dest[PATH_MAX])
 int
 http_get_request(int fd, struct request *r)
 {
+	struct in6_addr res;
 	size_t hlen, i, mlen;
 	ssize_t off;
 	char h[HEADER_MAX], *p, *q;
@@ -230,6 +231,43 @@ http_get_request(int fd, struct request *r)
 
 		/* go to next line */
 		p = q + (sizeof("\r\n") - 1);
+	}
+
+	/*
+	 * clean up host
+	 */
+
+	p = strrchr(r->field[REQ_HOST], ':');
+	q = strrchr(r->field[REQ_HOST], ']');
+
+	/* strip port suffix but don't interfere with IPv6 bracket notation
+	 * as per RFC 2732 */
+	if (p && (!q || p > q)) {
+		/* port suffix must not be empty */
+		if (*(p + 1) == '\0') {
+			return http_send_status(fd, S_BAD_REQUEST);
+		}
+		*p = '\0';
+	}
+
+	/* strip the brackets from the IPv6 notation and validate the address */
+	if (q) {
+		/* brackets must be on the outside */
+		if (r->field[REQ_HOST][0] != '[' || *(q + 1) != '\0') {
+			return http_send_status(fd, S_BAD_REQUEST);
+		}
+
+		/* remove the right bracket */
+		*q = '\0';
+		p = r->field[REQ_HOST] + 1;
+
+		/* validate the contained IPv6 address */
+		if (inet_pton(AF_INET6, p, &res) != 1) {
+			return http_send_status(fd, S_BAD_REQUEST);
+		}
+
+		/* copy it into the host field */
+		memmove(r->field[REQ_HOST], p, q - p + 1);
 	}
 
 	return 0;
