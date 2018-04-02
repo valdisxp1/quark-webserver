@@ -166,7 +166,7 @@ main(int argc, char *argv[])
 		if (!(tok = strdup(EARGF(usage())))) {
 			die("strdup:");
 		}
-		if (!(s.vhost = reallocarray(s.vhost, s.vhost_len++,
+		if (!(s.vhost = reallocarray(s.vhost, ++s.vhost_len,
 		                             sizeof(struct vhost)))) {
 			die("reallocarray:");
 		}
@@ -182,7 +182,7 @@ main(int argc, char *argv[])
 		if (!(tok = strdup(EARGF(usage())))) {
 			die("strdup:");
 		}
-		if (!(s.map = reallocarray(s.map, s.map_len++,
+		if (!(s.map = reallocarray(s.map, ++s.map_len,
 		                           sizeof(struct map)))) {
 			die("reallocarray:");
 		}
