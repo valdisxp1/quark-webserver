@@ -172,9 +172,11 @@ main(int argc, char *argv[])
 		}
 		if (!(s.vhost[s.vhost_len - 1].chost  = strtok(tok,  " ")) ||
 		    !(s.vhost[s.vhost_len - 1].regex  = strtok(NULL, " ")) ||
-		    !(s.vhost[s.vhost_len - 1].dir    = strtok(NULL, " ")) ||
-		    !(s.vhost[s.vhost_len - 1].prefix = strtok(NULL, " ")) ||
-		    strtok(NULL, "")) {
+		    !(s.vhost[s.vhost_len - 1].dir    = strtok(NULL, " "))) {
+			usage();
+		}
+		s.vhost[s.vhost_len - 1].prefix = strtok(NULL, " ");
+		if (strtok(NULL, "")) {
 			usage();
 		}
 		break;
