@@ -17,7 +17,7 @@ struct server s;
 static void
 verr(const char *fmt, va_list ap)
 {
-	if (argv0 && strncmp(fmt, "usage", strlen("usage"))) {
+	if (argv0 && strncmp(fmt, "usage", sizeof("usage") - 1)) {
 		fprintf(stderr, "%s: ", argv0);
 	}
 
