@@ -240,6 +240,9 @@ main(int argc, char *argv[])
 		    "Entry not found");
 	}
 
+	/* Open a new process group */
+	setpgid(0,0);
+
 	handlesignals(sigcleanup);
 
 	/* bind socket */
