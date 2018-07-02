@@ -358,7 +358,7 @@ http_send_response(int fd, struct request *r)
 	int hasport, ipv6host;
 	static char realtarget[PATH_MAX], tmptarget[PATH_MAX], t[TIMESTAMP_LEN];
 	char *p, *q, *mime;
-	const char *vhostmatch, *err;
+	const char *vhostmatch, *targethost, *err;
 
 	/* make a working copy of the target */
 	memcpy(realtarget, r->target, sizeof(realtarget));
@@ -442,37 +442,57 @@ http_send_response(int fd, struct request *r)
 	/* redirect if targets differ, host is non-canonical or we prefixed */
 	if (strcmp(r->target, realtarget) || (s.vhost && vhostmatch &&
 	    strcmp(r->field[REQ_HOST], vhostmatch))) {
-		/* do we need to add a port to the Location? */
-		hasport = s.port && strcmp(s.port, "80");
-
-		/* RFC 2732 specifies to use brackets for IPv6-addresses in
-		 * URLs, so we need to check if our host is one and honor that
-		 * later when we fill the "Location"-field */
-		if ((ipv6host = inet_pton(AF_INET6, r->field[REQ_HOST][0] ?
-		                          r->field[REQ_HOST] : s.host ? s.host :
-		                          "localhost", &res)) < 0) {
-			return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
-		}
-
 		/* encode realtarget */
 		encode(realtarget, tmptarget);
 
 		/* send redirection header */
-		if (dprintf(fd,
-		            "HTTP/1.1 %d %s\r\n"
-		            "Date: %s\r\n"
-		            "Connection: close\r\n"
-		            "Location: //%s%s%s%s%s%s\r\n"
-		            "\r\n",
-		            S_MOVED_PERMANENTLY,
-		            status_str[S_MOVED_PERMANENTLY],
-			    timestamp(time(NULL), t), ipv6host ? "[" : "",
-		            r->field[REQ_HOST][0] ? (s.vhost && vhostmatch) ?
-			    vhostmatch : r->field[REQ_HOST] : s.host ?
-		            s.host : "localhost",
-		            ipv6host ? "]" : "", hasport ? ":" : "",
-		            hasport ? s.port : "", tmptarget) < 0) {
-			return S_REQUEST_TIMEOUT;
+		if (s.vhost) {
+			/* absolute redirection URL */
+			targethost = r->field[REQ_HOST][0] ? vhostmatch ?
+			             vhostmatch : r->field[REQ_HOST] : s.host ?
+			             s.host : "localhost";
+
+			/* do we need to add a port to the Location? */
+			hasport = s.port && strcmp(s.port, "80");
+
+			/* RFC 2732 specifies to use brackets for IPv6-addresses
+			 * in URLs, so we need to check if our host is one and
+			 * honor that later when we fill the "Location"-field */
+			if ((ipv6host = inet_pton(AF_INET6, targethost,
+			                          &res)) < 0) {
+				return http_send_status(fd,
+				                        S_INTERNAL_SERVER_ERROR);
+			}
+
+			if (dprintf(fd,
+			            "HTTP/1.1 %d %s\r\n"
+			            "Date: %s\r\n"
+			            "Connection: close\r\n"
+			            "Location: //%s%s%s%s%s%s\r\n"
+			            "\r\n",
+			            S_MOVED_PERMANENTLY,
+			            status_str[S_MOVED_PERMANENTLY],
+				    timestamp(time(NULL), t),
+			            ipv6host ? "[" : "",
+				    targethost,
+			            ipv6host ? "]" : "", hasport ? ":" : "",
+			            hasport ? s.port : "", tmptarget) < 0) {
+				return S_REQUEST_TIMEOUT;
+			}
+		} else {
+			/* relative redirection URL */
+			if (dprintf(fd,
+			            "HTTP/1.1 %d %s\r\n"
+			            "Date: %s\r\n"
+			            "Connection: close\r\n"
+			            "Location: %s\r\n"
+			            "\r\n",
+			            S_MOVED_PERMANENTLY,
+			            status_str[S_MOVED_PERMANENTLY],
+				    timestamp(time(NULL), t),
+				    tmptarget) < 0) {
+				return S_REQUEST_TIMEOUT;
+			}
 		}
 
 		return S_MOVED_PERMANENTLY;
