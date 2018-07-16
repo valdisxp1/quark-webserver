@@ -430,7 +430,7 @@ http_send_response(int fd, struct request *r)
 	if (S_ISDIR(st.st_mode)) {
 		/* add / to target if not present */
 		len = strlen(realtarget);
-		if (len == PATH_MAX - 2) {
+		if (len >= PATH_MAX - 2) {
 			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
 		if (len && realtarget[len - 1] != '/') {
