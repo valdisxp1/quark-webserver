@@ -58,7 +58,7 @@ http_send_status(int fd, enum status s)
 	            "Date: %s\r\n"
 	            "Connection: close\r\n"
 	            "%s"
-	            "Content-Type: text/html\r\n"
+	            "Content-Type: text/html; charset=utf-8\r\n"
 	            "\r\n"
 	            "<!DOCTYPE html>\n<html>\n\t<head>\n"
 	            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"

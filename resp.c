@@ -56,7 +56,7 @@ resp_dir(int fd, char *name, struct request *r)
 	            "HTTP/1.1 %d %s\r\n"
 	            "Date: %s\r\n"
 	            "Connection: close\r\n"
-		    "Content-Type: text/html\r\n"
+		    "Content-Type: text/html; charset=utf-8\r\n"
 		    "\r\n",
 	            S_OK, status_str[S_OK], timestamp(time(NULL), t)) < 0) {
 		s = S_REQUEST_TIMEOUT;
