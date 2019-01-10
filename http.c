@@ -80,9 +80,7 @@ decode(char src[PATH_MAX], char dest[PATH_MAX])
 	char *s;
 
 	for (s = src, i = 0; *s; s++, i++) {
-		if (*s == '+') {
-			dest[i] = ' ';
-		} else if (*s == '%' && (sscanf(s + 1, "%2hhx", &n) == 1)) {
+		if (*s == '%' && (sscanf(s + 1, "%2hhx", &n) == 1)) {
 			dest[i] = n;
 			s += 2;
 		} else {
