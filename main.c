@@ -129,8 +129,44 @@ main(int argc, char *argv[])
 	s.listdirs = 0;
 
 	ARGBEGIN {
+	case 'd':
+		servedir = EARGF(usage());
+		break;
+	case 'g':
+		group = EARGF(usage());
+		break;
 	case 'h':
 		s.host = EARGF(usage());
+		break;
+	case 'i':
+		s.docindex = EARGF(usage());
+		if (strchr(s.docindex, '/')) {
+			die("The document index must not contain '/'");
+		}
+		break;
+	case 'l':
+		s.listdirs = 1;
+		break;
+	case 'm':
+		if (!(tok = strdup(EARGF(usage())))) {
+			die("strdup:");
+		}
+		if (!(s.map = reallocarray(s.map, ++s.map_len,
+		                           sizeof(struct map)))) {
+			die("reallocarray:");
+		}
+		if (!(s.map[s.map_len - 1].chost = strtok(tok,  " ")) ||
+		    !(s.map[s.map_len - 1].from  = strtok(NULL, " ")) ||
+		    !(s.map[s.map_len - 1].to    = strtok(NULL, " ")) ||
+		    strtok(NULL, "")) {
+			usage();
+		}
+		break;
+	case 'n':
+		maxnprocs = strtonum(EARGF(usage()), 1, INT_MAX, &err);
+		if (err) {
+			die("strtonum '%s': %s", EARGF(usage()), err);
+		}
 		break;
 	case 'p':
 		s.port = EARGF(usage());
@@ -140,27 +176,6 @@ main(int argc, char *argv[])
 		break;
 	case 'u':
 		user = EARGF(usage());
-		break;
-	case 'g':
-		group = EARGF(usage());
-		break;
-	case 'n':
-		maxnprocs = strtonum(EARGF(usage()), 1, INT_MAX, &err);
-		if (err) {
-			die("strtonum '%s': %s", EARGF(usage()), err);
-		}
-		break;
-	case 'd':
-		servedir = EARGF(usage());
-		break;
-	case 'l':
-		s.listdirs = 1;
-		break;
-	case 'i':
-		s.docindex = EARGF(usage());
-		if (strchr(s.docindex, '/')) {
-			die("The document index must not contain '/'");
-		}
 		break;
 	case 'v':
 		if (!(tok = strdup(EARGF(usage())))) {
@@ -177,21 +192,6 @@ main(int argc, char *argv[])
 		}
 		s.vhost[s.vhost_len - 1].prefix = strtok(NULL, " ");
 		if (strtok(NULL, "")) {
-			usage();
-		}
-		break;
-	case 'm':
-		if (!(tok = strdup(EARGF(usage())))) {
-			die("strdup:");
-		}
-		if (!(s.map = reallocarray(s.map, ++s.map_len,
-		                           sizeof(struct map)))) {
-			die("reallocarray:");
-		}
-		if (!(s.map[s.map_len - 1].chost = strtok(tok,  " ")) ||
-		    !(s.map[s.map_len - 1].from  = strtok(NULL, " ")) ||
-		    !(s.map[s.map_len - 1].to    = strtok(NULL, " ")) ||
-		    strtok(NULL, "")) {
 			usage();
 		}
 		break;
