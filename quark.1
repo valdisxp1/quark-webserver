@@ -1,4 +1,4 @@
-.Dd 2019-02-18
+.Dd 2019-02-24
 .Dt QUARK 1
 .Os suckless.org
 .Sh NAME
@@ -57,16 +57,15 @@ Enable directory listing.
 Add the target prefix mapping rule specified by
 .Ar map ,
 which has the form
-.Qq Pa chost from to ,
+.Qq Pa from to [chost] ,
 where each element is separated with whitespace.
 .Pp
 The prefix
 .Pa from
-of all matching targets, especially only of those requests for the canonical
-virtual host
-.Pa chost
-when virtual hosts are specified, is then replaced with
-.Pa to .
+of all matching targets is replaced with
+.Pa to ,
+optionally limited to the canonical virtual host
+.Pa chost .
 If no virtual hosts are given,
 .Pa chost
 is ignored.

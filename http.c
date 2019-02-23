@@ -394,8 +394,10 @@ http_send_response(int fd, struct request *r)
 	for (i = 0; i < s.map_len; i++) {
 		len = strlen(s.map[i].from);
 		if (!strncmp(realtarget, s.map[i].from, len)) {
-			/* match canonical host if vhosts are enabled */
-			if (s.vhost && strcmp(s.map[i].chost, vhostmatch)) {
+			/* match canonical host if vhosts are enabled and
+			 * the mapping specifies a canonical host */
+			if (s.vhost && s.map[i].chost &&
+			    strcmp(s.map[i].chost, vhostmatch)) {
 				continue;
 			}
 

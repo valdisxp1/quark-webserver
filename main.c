@@ -155,10 +155,12 @@ main(int argc, char *argv[])
 		                           sizeof(struct map)))) {
 			die("reallocarray:");
 		}
-		if (!(s.map[s.map_len - 1].chost = strtok(tok,  " ")) ||
-		    !(s.map[s.map_len - 1].from  = strtok(NULL, " ")) ||
-		    !(s.map[s.map_len - 1].to    = strtok(NULL, " ")) ||
-		    strtok(NULL, "")) {
+		if (!(s.map[s.map_len - 1].from  = strtok(tok,  " ")) ||
+		    !(s.map[s.map_len - 1].to    = strtok(NULL, " "))) {
+			usage();
+		}
+		s.map[s.map_len - 1].chost = strtok(NULL, " ");
+		if (strtok(NULL, "")) {
 			usage();
 		}
 		break;
