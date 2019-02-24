@@ -90,6 +90,77 @@ handlesignals(void(*hdl)(int))
 	sigaction(SIGQUIT, &sa, NULL);
 }
 
+static int
+spacetok(const char *s, char **t, size_t tlen)
+{
+	const char *tok;
+	size_t i, j, toki, spaces;
+
+	/* fill token-array with NULL-pointers */
+	for (i = 0; i < tlen; i++) {
+		t[i] = NULL;
+	}
+	toki = 0;
+
+	/* don't allow NULL string or leading spaces */
+	if (!s || *s == ' ') {
+		return 1;
+	}
+start:
+	/* skip spaces */
+	for (; *s == ' '; s++)
+		;
+
+	/* don't allow trailing spaces */
+	if (*s == '\0') {
+		goto err;
+	}
+
+	/* consume token */
+	for (tok = s, spaces = 0; ; s++) {
+		if (*s == '\\' && *(s + 1) == ' ') {
+			spaces++;
+			s++;
+			continue;
+		} else if (*s == ' ') {
+			/* end of token */
+			goto token;
+		} else if (*s == '\0') {
+			/* end of string */
+			goto token;
+		}
+	}
+token:
+	if (toki >= tlen) {
+		goto err;
+	}
+	if (!(t[toki] = malloc(s - tok - spaces + 1))) {
+		die("malloc:");
+	}
+	for (i = 0, j = 0; j < s - tok - spaces + 1; i++, j++) {
+		if (tok[i] == '\\' && tok[i + 1] == ' ') {
+			i++;
+		}
+		t[toki][j] = tok[i];
+	}
+	t[toki][s - tok - spaces] = '\0';
+	toki++;
+
+	if (*s == ' ') {
+		s++;
+		goto start;
+	}
+
+	return 0;
+err:
+	for (i = 0; i < tlen; i++) {
+		free(t[i]);
+		t[i] = NULL;
+	}
+
+	return 1;
+}
+
 static void
 usage(void)
 {
@@ -113,7 +184,7 @@ main(int argc, char *argv[])
 	socklen_t in_sa_len;
 	int insock, status = 0, infd;
 	const char *err;
-	char *tok;
+	char *tok[4];
 
 	/* defaults */
 	int maxnprocs = 512;
@@ -148,21 +219,16 @@ main(int argc, char *argv[])
 		s.listdirs = 1;
 		break;
 	case 'm':
-		if (!(tok = strdup(EARGF(usage())))) {
-			die("strdup:");
+		if (spacetok(EARGF(usage()), tok, 3) || !tok[0] || !tok[1]) {
+			usage();
 		}
 		if (!(s.map = reallocarray(s.map, ++s.map_len,
 		                           sizeof(struct map)))) {
 			die("reallocarray:");
 		}
-		if (!(s.map[s.map_len - 1].from  = strtok(tok,  " ")) ||
-		    !(s.map[s.map_len - 1].to    = strtok(NULL, " "))) {
-			usage();
-		}
-		s.map[s.map_len - 1].chost = strtok(NULL, " ");
-		if (strtok(NULL, "")) {
-			usage();
-		}
+		s.map[s.map_len - 1].from  = tok[0];
+		s.map[s.map_len - 1].to    = tok[1];
+		s.map[s.map_len - 1].chost = tok[2];
 		break;
 	case 'n':
 		maxnprocs = strtonum(EARGF(usage()), 1, INT_MAX, &err);
@@ -180,22 +246,18 @@ main(int argc, char *argv[])
 		user = EARGF(usage());
 		break;
 	case 'v':
-		if (!(tok = strdup(EARGF(usage())))) {
-			die("strdup:");
+		if (spacetok(EARGF(usage()), tok, 4) || !tok[0] || !tok[1] ||
+		    !tok[2]) {
+			usage();
 		}
 		if (!(s.vhost = reallocarray(s.vhost, ++s.vhost_len,
 		                             sizeof(struct vhost)))) {
 			die("reallocarray:");
 		}
-		if (!(s.vhost[s.vhost_len - 1].chost  = strtok(tok,  " ")) ||
-		    !(s.vhost[s.vhost_len - 1].regex  = strtok(NULL, " ")) ||
-		    !(s.vhost[s.vhost_len - 1].dir    = strtok(NULL, " "))) {
-			usage();
-		}
-		s.vhost[s.vhost_len - 1].prefix = strtok(NULL, " ");
-		if (strtok(NULL, "")) {
-			usage();
-		}
+		s.vhost[s.vhost_len - 1].chost  = tok[0];
+		s.vhost[s.vhost_len - 1].regex  = tok[1];
+		s.vhost[s.vhost_len - 1].dir    = tok[2];
+		s.vhost[s.vhost_len - 1].prefix = tok[3];
 		break;
 	default:
 		usage();

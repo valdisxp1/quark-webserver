@@ -58,7 +58,8 @@ Add the target prefix mapping rule specified by
 .Ar map ,
 which has the form
 .Qq Pa from to [chost] ,
-where each element is separated with whitespace.
+where each element is separated with spaces (0x20) that can be
+escaped with '\\'.
 .Pp
 The prefix
 .Pa from
@@ -96,7 +97,8 @@ Add the virtual host specified by
 .Ar vhost ,
 which has the form
 .Qq Pa chost regex dir [prefix] ,
-where each element is separated with whitespace.
+where each element is separated with spaces (0x20) that can be
+escaped with '\\'.
 .Pp
 A request matching the virtual host regular expression
 .Pa regex
