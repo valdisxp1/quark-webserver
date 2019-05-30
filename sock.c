@@ -18,25 +18,25 @@
 int
 sock_get_ips(const char *host, const char* port)
 {
-	struct addrinfo hints, *ai, *p;
-	int ret, insock = 0, yes;
-
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_flags = AI_NUMERICSERV;
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
+	struct addrinfo hints = {
+		.ai_flags    = AI_NUMERICSERV,
+		.ai_family   = AF_UNSPEC,
+		.ai_socktype = SOCK_STREAM,
+	};
+	struct addrinfo *ai, *p;
+	int ret, insock = 0;
 
 	if ((ret = getaddrinfo(host, port, &hints, &ai))) {
 		die("getaddrinfo: %s", gai_strerror(ret));
 	}
 
-	for (yes = 1, p = ai; p; p = p->ai_next) {
+	for (p = ai; p; p = p->ai_next) {
 		if ((insock = socket(p->ai_family, p->ai_socktype,
 		                     p->ai_protocol)) < 0) {
 			continue;
 		}
-		if (setsockopt(insock, SOL_SOCKET, SO_REUSEADDR, &yes,
-		               sizeof(int)) < 0) {
+		if (setsockopt(insock, SOL_SOCKET, SO_REUSEADDR,
+		               &(int){1}, sizeof(int)) < 0) {
 			die("setsockopt:");
 		}
 		if (bind(insock, p->ai_addr, p->ai_addrlen) < 0) {
@@ -70,16 +70,15 @@ sock_rem_uds(const char *udsname)
 int
 sock_get_uds(const char *udsname, uid_t uid, gid_t gid)
 {
-	struct sockaddr_un addr;
+	struct sockaddr_un addr = {
+		.sun_family = AF_UNIX,
+	};
 	size_t udsnamelen;
 	int insock, sockmode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH;
 
 	if ((insock = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
 		die("socket:");
 	}
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = AF_UNIX;
 
 	if ((udsnamelen = strlen(udsname)) > sizeof(addr.sun_path) - 1) {
 		die("UNIX-domain socket name truncated");

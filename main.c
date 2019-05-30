@@ -78,12 +78,11 @@ sigcleanup(int sig)
 static void
 handlesignals(void(*hdl)(int))
 {
-	struct sigaction sa;
+	struct sigaction sa = {
+		.sa_handler = hdl,
+	};
 
-	memset(&sa, 0, sizeof(sa));
 	sigemptyset(&sa.sa_mask);
-	sa.sa_handler = hdl;
-
 	sigaction(SIGTERM, &sa, NULL);
 	sigaction(SIGHUP, &sa, NULL);
 	sigaction(SIGINT, &sa, NULL);
