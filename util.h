@@ -46,6 +46,9 @@ extern char *argv0;
 void warn(const char *, ...);
 void die(const char *, ...);
 
+void epledge(const char *, const char *);
+void eunveil(const char *, const char *);
+
 #define TIMESTAMP_LEN 30
 
 char *timestamp(time_t, char buf[TIMESTAMP_LEN]);

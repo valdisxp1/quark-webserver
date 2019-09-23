@@ -9,6 +9,10 @@
 #include <sys/types.h>
 #include <time.h>
 
+#ifdef __OpenBSD__
+#include <unistd.h>
+#endif /* __OpenBSD__ */
+
 #include "util.h"
 
 char *argv0;
@@ -51,6 +55,32 @@ die(const char *fmt, ...)
 	va_end(ap);
 
 	exit(1);
+}
+
+void
+epledge(const char *promises, const char *execpromises)
+{
+	(void)promises;
+	(void)execpromises;
+
+#ifdef __OpenBSD__
+	if (pledge(promises, execpromises) == -1) {
+		die("pledge:");
+	}
+#endif /* __OpenBSD__ */
+}
+
+void
+eunveil(const char *path, const char *permissions)
+{
+	(void)path;
+	(void)permissions;
+
+#ifdef __OpenBSD__
+	if (unveil(path, permissions) == -1) {
+		die("unveil:");
+	}
+#endif /* __OpenBSD__ */
 }
 
 char *

@@ -325,6 +325,10 @@ main(int argc, char *argv[])
 			die("signal: Failed to set SIG_IGN on SIGCHLD");
 		}
 
+		/* limit ourselves to reading the servedir and block further unveils */
+		eunveil(servedir, "r");
+		eunveil(NULL, NULL);
+
 		/* chroot */
 		if (chdir(servedir) < 0) {
 			die("chdir '%s':", servedir);
@@ -343,6 +347,13 @@ main(int argc, char *argv[])
 		if (pwd && setuid(pwd->pw_uid) < 0) {
 			die("setuid:");
 		}
+
+		if (udsname) {
+			epledge("stdio rpath proc unix", NULL);
+		} else {
+			epledge("stdio rpath proc inet", NULL);
+		}
+
 		if (getuid() == 0) {
 			die("Won't run as root user", argv0);
 		}
@@ -375,6 +386,14 @@ main(int argc, char *argv[])
 		}
 		exit(0);
 	default:
+		/* limit ourselves even further while we are waiting */
+		eunveil(NULL, NULL);
+		if (udsname) {
+			epledge("stdio cpath", NULL);
+		} else {
+			epledge("stdio", NULL);
+		}
+
 		while ((wpid = wait(&status)) > 0)
 			;
 	}
