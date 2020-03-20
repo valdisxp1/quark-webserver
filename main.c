@@ -387,10 +387,13 @@ main(int argc, char *argv[])
 		exit(0);
 	default:
 		/* limit ourselves even further while we are waiting */
-		eunveil(NULL, NULL);
 		if (udsname) {
+			eunveil(udsname, "c");
+			eunveil(NULL, NULL);
 			epledge("stdio cpath", NULL);
 		} else {
+			eunveil("/", "");
+			eunveil(NULL, NULL);
 			epledge("stdio", NULL);
 		}
 
