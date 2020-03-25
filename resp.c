@@ -38,6 +38,51 @@ suffix(int t)
 	return "";
 }
 
+static void
+html_escape(char *src, char *dst, size_t dst_siz)
+{
+	const struct {
+		char c;
+		char *s;
+	} escape[] = {
+		{ '&',  "&amp;"  },
+		{ '<',  "&lt;"   },
+		{ '>',  "&gt;"   },
+		{ '"',  "&quot;" },
+		{ '\'', "&#x27;" },
+	};
+	size_t i, j, k, esclen;
+
+	for (i = 0, j = 0; src[i] != '\0'; i++) {
+		for (k = 0; k < LEN(escape); k++) {
+			if (src[i] == escape[k].c) {
+				break;
+			}
+		}
+		if (k == LEN(escape)) {
+			/* no escape char at src[i] */
+			if (j == dst_siz - 1) {
+				/* silent truncation */
+				break;
+			} else {
+				dst[j++] = src[i];
+			}
+		} else {
+			/* escape char at src[i] */
+			esclen = strlen(escape[k].s);
+
+			if (j >= dst_siz - esclen) {
+				/* silent truncation */
+				break;
+			} else {
+				memcpy(&dst[j], escape[k].s, esclen);
+				j += esclen;
+			}
+		}
+	}
+	dst[j] = '\0';
+}
+
 enum status
 resp_dir(int fd, char *name, struct request *r)
 {
@@ -45,6 +90,7 @@ resp_dir(int fd, char *name, struct request *r)
 	size_t i;
 	int dirlen, s;
 	static char t[TIMESTAMP_LEN];
+	char esc[PATH_MAX /* > NAME_MAX */ * 6]; /* strlen("&...;") <= 6 */
 
 	/* read directory */
 	if ((dirlen = scandir(name, &e, NULL, compareent)) < 0) {
@@ -65,11 +111,12 @@ resp_dir(int fd, char *name, struct request *r)
 
 	if (r->method == M_GET) {
 		/* listing header */
+		html_escape(name, esc, sizeof(esc));
 		if (dprintf(fd,
 		            "<!DOCTYPE html>\n<html>\n\t<head>"
 		            "<title>Index of %s</title></head>\n"
 		            "\t<body>\n\t\t<a href=\"..\">..</a>",
-		            name) < 0) {
+		            esc) < 0) {
 			s = S_REQUEST_TIMEOUT;
 			goto cleanup;
 		}
@@ -82,10 +129,11 @@ resp_dir(int fd, char *name, struct request *r)
 			}
 
 			/* entry line */
+			html_escape(e[i]->d_name, esc, sizeof(esc));
 			if (dprintf(fd, "<br />\n\t\t<a href=\"%s%s\">%s%s</a>",
-			            e[i]->d_name,
+			            esc,
 			            (e[i]->d_type == DT_DIR) ? "/" : "",
-			            e[i]->d_name,
+			            esc,
 			            suffix(e[i]->d_type)) < 0) {
 				s = S_REQUEST_TIMEOUT;
 				goto cleanup;
