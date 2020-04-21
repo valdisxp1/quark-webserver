@@ -166,7 +166,7 @@ usage(void)
 	const char *opts = "[-u user] [-g group] [-n num] [-d dir] [-l] "
 	                   "[-i file] [-v vhost] ... [-m map] ...";
 
-	die("usage: %s -h host -p port %s\n"
+	die("usage: %s -p port [-h host] %s\n"
 	    "       %s -U file [-p port] %s", argv0,
 	    opts, argv0, opts);
 }
@@ -266,8 +266,8 @@ main(int argc, char *argv[])
 		usage();
 	}
 
-	/* allow host xor UNIX-domain socket, force port with host */
-	if ((!s.host == !udsname) || (s.host && !s.port)) {
+	/* can't have both host and UDS but must have one of port or UDS*/
+	if ((s.host && udsname) || !(s.port || udsname)) {
 		usage();
 	}
 
