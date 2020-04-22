@@ -216,14 +216,16 @@ resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		while ((bread = fread(buf, 1, MIN(sizeof(buf),
 		                      (size_t)remaining), fp))) {
 			if (bread < 0) {
-				return S_INTERNAL_SERVER_ERROR;
+				s = S_INTERNAL_SERVER_ERROR;
+				goto cleanup;
 			}
 			remaining -= bread;
 			p = buf;
 			while (bread > 0) {
 				bwritten = write(fd, p, bread);
 				if (bwritten <= 0) {
-					return S_REQUEST_TIMEOUT;
+					s = S_REQUEST_TIMEOUT;
+					goto cleanup;
 				}
 				bread -= bwritten;
 				p += bwritten;

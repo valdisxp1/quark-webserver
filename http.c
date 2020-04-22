@@ -541,6 +541,7 @@ http_send_response(int fd, struct request *r)
 			            timestamp(time(NULL), t)) < 0) {
 				return S_REQUEST_TIMEOUT;
 			}
+			return S_NOT_MODIFIED;
 		}
 	}
 
