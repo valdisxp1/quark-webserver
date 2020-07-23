@@ -190,7 +190,8 @@ resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
 	            "Connection: close\r\n"
 	            "Last-Modified: %s\r\n"
 	            "Content-Type: %s\r\n"
-	            "Content-Length: %zu\r\n",
+	            "Content-Length: %zu\r\n"
+		    "Accept-Ranges: bytes\r\n",
 	            s, status_str[s], timestamp(time(NULL), t1),
 	            timestamp(st->st_mtim.tv_sec, t2), mime,
 	            upper - lower + 1) < 0) {
