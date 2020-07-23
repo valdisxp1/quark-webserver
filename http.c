@@ -350,7 +350,7 @@ http_send_response(int fd, struct request *r)
 {
 	struct in6_addr res;
 	struct stat st;
-	struct tm tm;
+	struct tm tm = { 0 };
 	size_t len, i;
 	off_t lower, upper;
 	int hasport, ipv6host;
