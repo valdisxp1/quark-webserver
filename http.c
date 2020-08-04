@@ -342,6 +342,109 @@ squash:
 	return 0;
 }
 
+static enum status
+parse_range(char *s, off_t size, off_t *lower, off_t *upper)
+{
+	char *p, *q;
+	const char *err;
+
+	/* default to the complete range */
+	*lower = 0;
+	*upper = size - 1;
+
+	/* done if no range-string is given */
+	if (s == NULL || *s == '\0') {
+		return 0;
+	}
+
+	/* skip opening statement */
+	if (strncmp(s, "bytes=", sizeof("bytes=") - 1)) {
+		return S_BAD_REQUEST;
+	}
+	p = s + (sizeof("bytes=") - 1);
+
+	/* find hyphen and replace with \0 */
+	if (!(q = strchr(p, '-'))) {
+		return S_BAD_REQUEST;
+	}
+	*(q++) = '\0';
+
+	/*
+	 *  byte-range=first\0last...
+	 *             ^      ^
+	 *             |      |
+	 *             p      q
+	 */
+
+	/*
+	 * make sure we only have a single range, and not a comma
+	 * separated list, which we will refuse to accept out of spite
+	 * towards this horrible part of the spec
+	 */
+	if (strchr(q, ',')) {
+		return S_RANGE_NOT_SATISFIABLE;
+	}
+
+	if (p[0] != '\0') {
+		/*
+		 * Range has format "first-last" or "first-",
+		 * i.e. return bytes 'first' to 'last' (or the
+		 * last byte if 'last' is not given),
+		 * inclusively, and byte-numbering beginning at 0
+		 */
+		*lower = strtonum(p, 0, LLONG_MAX, &err);
+		if (!err) {
+			if (q[0] != '\0') {
+				*upper = strtonum(q, 0, LLONG_MAX, &err);
+			} else {
+				*upper = size - 1;
+			}
+		}
+		if (err) {
+			/* one of the strtonum()'s failed */
+			return S_BAD_REQUEST;
+		}
+
+		/* check ranges */
+		if (*lower > *upper || *lower >= size) {
+			return S_RANGE_NOT_SATISFIABLE;
+		}
+
+		/* adjust upper limit to be at most the last byte */
+		*upper = MIN(*upper, size - 1);
+	} else {
+		/*
+		 * Range has format "-num", i.e. return the 'num'
+		 * last bytes
+		 */
+
+		/*
+		 * use upper as a temporary storage for 'num',
+		 * as we know 'upper' is size - 1
+		 */
+		*upper = strtonum(q, 0, LLONG_MAX, &err);
+		if (err) {
+			return S_BAD_REQUEST;
+		}
+
+		/* determine lower */
+		if (*upper > size) {
+			/* more bytes requested than we have */
+			*lower = 0;
+		} else {
+			*lower = size - *upper;
+		}
+
+		/* set upper to the correct value */
+		*upper = size - 1;
+	}
+
+	/* reset \0 to the hyphen */
+	*(q - 1) = '-';
+
+	return 0;
+}
+
 #undef RELPATH
 #define RELPATH(x) ((!*(x) || !strcmp(x, "/")) ? "." : ((x) + 1))
 
@@ -355,8 +458,8 @@ http_send_response(int fd, struct request *r)
 	off_t lower, upper;
 	int hasport, ipv6host;
 	static char realtarget[PATH_MAX], tmptarget[PATH_MAX], t[TIMESTAMP_LEN];
-	char *p, *q, *mime;
-	const char *vhostmatch, *targethost, *err;
+	char *p, *mime;
+	const char *vhostmatch, *targethost;
 
 	/* make a working copy of the target */
 	memcpy(realtarget, r->target, sizeof(realtarget));
@@ -546,96 +649,8 @@ http_send_response(int fd, struct request *r)
 	}
 
 	/* range */
-	lower = 0;
-	upper = st.st_size - 1;
-	if (r->field[REQ_RANGE][0]) {
-		/* parse field */
-		p = r->field[REQ_RANGE];
-		err = NULL;
-
-		if (strncmp(p, "bytes=", sizeof("bytes=") - 1)) {
-			return http_send_status(fd, S_BAD_REQUEST);
-		}
-		p += sizeof("bytes=") - 1;
-
-		if (!(q = strchr(p, '-'))) {
-			return http_send_status(fd, S_BAD_REQUEST);
-		}
-		*(q++) = '\0';
-
-		/*
-		 *  byte-range=first\0last...
-		 *             ^      ^
-		 *             |      |
-		 *             p      q
-		 */
-
-		/*
-		 * make sure we only have a single range,
-		 * and not a comma separated list, which we
-		 * will refuse to accept out of spite towards
-		 * this horrible part of the spec
-		 */
-		if (strchr(q, ',')) {
-			goto not_satisfiable;
-		}
-
-		if (p[0] != '\0') {
-			/*
-			 * Range has format "first-last" or "first-",
-			 * i.e. return bytes 'first' to 'last' (or the
-			 * last byte if 'last' is not given),
-			 * inclusively, and byte-numbering beginning at 0
-			 */
-			lower = strtonum(p, 0, LLONG_MAX, &err);
-			if (!err) {
-				if (q[0] != '\0') {
-					upper = strtonum(q, 0, LLONG_MAX,
-					                 &err);
-				} else {
-					upper = st.st_size - 1;
-				}
-			}
-			if (err) {
-				/* one of the strtonum()'s failed */
-				return http_send_status(fd, S_BAD_REQUEST);
-			}
-
-			/* check ranges */
-			if (lower > upper || lower >= st.st_size) {
-				goto not_satisfiable;
-			}
-
-			/* adjust upper limit to be at most the last byte */
-			upper = MIN(upper, st.st_size - 1);
-		} else {
-			/*
-			 * Range has format "-num", i.e. return the 'num'
-			 * last bytes
-			 */
-
-			/*
-			 * use upper as a temporary storage for 'num',
-			 * as we know 'upper' is st.st_size - 1
-			 */
-			upper = strtonum(q, 0, LLONG_MAX, &err);
-			if (err) {
-				return http_send_status(fd, S_BAD_REQUEST);
-			}
-
-			/* determine lower */
-			if (upper > st.st_size) {
-				/* more bytes requested than we have */
-				lower = 0;
-			} else {
-				lower = st.st_size - upper;
-			}
-
-			/* set upper to the correct value */
-			upper = st.st_size - 1;
-		}
-		goto satisfiable;
-not_satisfiable:
+	switch (parse_range(r->field[REQ_RANGE], st.st_size, &lower, &upper)) {
+	case S_RANGE_NOT_SATISFIABLE:
 		if (dprintf(fd,
 		            "HTTP/1.1 %d %s\r\n"
 		            "Date: %s\r\n"
@@ -649,7 +664,9 @@ not_satisfiable:
 			return S_REQUEST_TIMEOUT;
 		}
 		return S_RANGE_NOT_SATISFIABLE;
-satisfiable:
+	case S_BAD_REQUEST:
+		return http_send_status(fd, S_BAD_REQUEST);
+	default:
 		;
 	}
 
