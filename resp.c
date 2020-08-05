@@ -84,7 +84,7 @@ html_escape(char *src, char *dst, size_t dst_siz)
 }
 
 enum status
-resp_dir(int fd, char *name, struct request *r)
+resp_dir(int fd, char *name, struct request *req)
 {
 	enum status sendstatus;
 	struct dirent **e;
@@ -107,7 +107,7 @@ resp_dir(int fd, char *name, struct request *r)
 		goto cleanup;
 	}
 
-	if (r->method == M_GET) {
+	if (req->method == M_GET) {
 		/* listing header */
 		html_escape(name, esc, sizeof(esc));
 		if (dprintf(fd,
@@ -155,13 +155,13 @@ cleanup:
 }
 
 enum status
-resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
+resp_file(int fd, char *name, struct request *req, struct stat *st, char *mime,
           off_t lower, off_t upper)
 {
 	FILE *fp;
 	enum status sendstatus;
 	struct response res = {
-		.status = (r->field[REQ_RANGE][0] != '\0') ?
+		.status = (req->field[REQ_RANGE][0] != '\0') ?
 		          S_PARTIAL_CONTENT : S_OK,
 		.field[RES_ACCEPT_RANGES] = "bytes",
 	};
@@ -187,7 +187,7 @@ resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
 	              "%zu", upper - lower + 1)) {
 		return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
 	}
-	if (r->field[REQ_RANGE][0] != '\0') {
+	if (req->field[REQ_RANGE][0] != '\0') {
 		if (esnprintf(res.field[RES_CONTENT_RANGE],
 		              sizeof(res.field[RES_CONTENT_RANGE]),
 		              "bytes %zd-%zd/%zu", lower, upper,
@@ -212,7 +212,7 @@ resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		goto cleanup;
 	}
 
-	if (r->method == M_GET) {
+	if (req->method == M_GET) {
 		/* write data until upper bound is hit */
 		remaining = upper - lower + 1;
 

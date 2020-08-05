@@ -144,7 +144,7 @@ decode(char src[PATH_MAX], char dest[PATH_MAX])
 }
 
 int
-http_get_request(int fd, struct request *r)
+http_get_request(int fd, struct request *req)
 {
 	struct in6_addr addr;
 	size_t hlen, i, mlen;
@@ -152,7 +152,7 @@ http_get_request(int fd, struct request *r)
 	char h[HEADER_MAX], *p, *q;
 
 	/* empty all fields */
-	memset(r, 0, sizeof(*r));
+	memset(req, 0, sizeof(*req));
 
 	/*
 	 * receive header
@@ -189,7 +189,7 @@ http_get_request(int fd, struct request *r)
 	for (i = 0; i < NUM_REQ_METHODS; i++) {
 		mlen = strlen(req_method_str[i]);
 		if (!strncmp(req_method_str[i], h, mlen)) {
-			r->method = i;
+			req->method = i;
 			break;
 		}
 	}
@@ -213,8 +213,8 @@ http_get_request(int fd, struct request *r)
 	if (q - p + 1 > PATH_MAX) {
 		return http_send_status(fd, S_REQUEST_TOO_LARGE);
 	}
-	memcpy(r->target, p, q - p + 1);
-	decode(r->target, r->target);
+	memcpy(req->target, p, q - p + 1);
+	decode(req->target, req->target);
 
 	/* basis for next step */
 	p = q + 1;
@@ -278,7 +278,7 @@ http_get_request(int fd, struct request *r)
 		if (q - p + 1 > FIELD_MAX) {
 			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
-		memcpy(r->field[i], p, q - p + 1);
+		memcpy(req->field[i], p, q - p + 1);
 
 		/* go to next line */
 		p = q + (sizeof("\r\n") - 1);
@@ -288,8 +288,8 @@ http_get_request(int fd, struct request *r)
 	 * clean up host
 	 */
 
-	p = strrchr(r->field[REQ_HOST], ':');
-	q = strrchr(r->field[REQ_HOST], ']');
+	p = strrchr(req->field[REQ_HOST], ':');
+	q = strrchr(req->field[REQ_HOST], ']');
 
 	/* strip port suffix but don't interfere with IPv6 bracket notation
 	 * as per RFC 2732 */
@@ -304,13 +304,13 @@ http_get_request(int fd, struct request *r)
 	/* strip the brackets from the IPv6 notation and validate the address */
 	if (q) {
 		/* brackets must be on the outside */
-		if (r->field[REQ_HOST][0] != '[' || *(q + 1) != '\0') {
+		if (req->field[REQ_HOST][0] != '[' || *(q + 1) != '\0') {
 			return http_send_status(fd, S_BAD_REQUEST);
 		}
 
 		/* remove the right bracket */
 		*q = '\0';
-		p = r->field[REQ_HOST] + 1;
+		p = req->field[REQ_HOST] + 1;
 
 		/* validate the contained IPv6 address */
 		if (inet_pton(AF_INET6, p, &addr) != 1) {
@@ -318,7 +318,7 @@ http_get_request(int fd, struct request *r)
 		}
 
 		/* copy it into the host field */
-		memmove(r->field[REQ_HOST], p, q - p + 1);
+		memmove(req->field[REQ_HOST], p, q - p + 1);
 	}
 
 	return 0;
@@ -502,7 +502,7 @@ parse_range(char *s, off_t size, off_t *lower, off_t *upper)
 #define RELPATH(x) ((!*(x) || !strcmp(x, "/")) ? "." : ((x) + 1))
 
 enum status
-http_send_response(int fd, struct request *r)
+http_send_response(int fd, struct request *req)
 {
 	struct in6_addr addr;
 	struct response res = { 0 };
@@ -516,14 +516,14 @@ http_send_response(int fd, struct request *r)
 	const char *vhostmatch, *targethost;
 
 	/* make a working copy of the target */
-	memcpy(realtarget, r->target, sizeof(realtarget));
+	memcpy(realtarget, req->target, sizeof(realtarget));
 
 	/* match vhost */
 	vhostmatch = NULL;
 	if (s.vhost) {
 		for (i = 0; i < s.vhost_len; i++) {
 			/* switch to vhost directory if there is a match */
-			if (!regexec(&s.vhost[i].re, r->field[REQ_HOST], 0,
+			if (!regexec(&s.vhost[i].re, req->field[REQ_HOST], 0,
 			             NULL, 0)) {
 				if (chdir(s.vhost[i].dir) < 0) {
 					return http_send_status(fd, (errno == EACCES) ?
@@ -597,8 +597,8 @@ http_send_response(int fd, struct request *r)
 	}
 
 	/* redirect if targets differ, host is non-canonical or we prefixed */
-	if (strcmp(r->target, realtarget) || (s.vhost && vhostmatch &&
-	    strcmp(r->field[REQ_HOST], vhostmatch))) {
+	if (strcmp(req->target, realtarget) || (s.vhost && vhostmatch &&
+	    strcmp(req->field[REQ_HOST], vhostmatch))) {
 		res.status = S_MOVED_PERMANENTLY;
 
 		/* encode realtarget */
@@ -607,8 +607,8 @@ http_send_response(int fd, struct request *r)
 		/* determine target location */
 		if (s.vhost) {
 			/* absolute redirection URL */
-			targethost = r->field[REQ_HOST][0] ? vhostmatch ?
-			             vhostmatch : r->field[REQ_HOST] : s.host ?
+			targethost = req->field[REQ_HOST][0] ? vhostmatch ?
+			             vhostmatch : req->field[REQ_HOST] : s.host ?
 			             s.host : "localhost";
 
 			/* do we need to add a port to the Location? */
@@ -648,7 +648,7 @@ http_send_response(int fd, struct request *r)
 	if (S_ISDIR(st.st_mode)) {
 		/* append docindex to target */
 		if (esnprintf(realtarget, sizeof(realtarget), "%s%s",
-		              r->target, s.docindex)) {
+		              req->target, s.docindex)) {
 			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
 
@@ -658,7 +658,7 @@ http_send_response(int fd, struct request *r)
 				/* remove index suffix and serve dir */
 				realtarget[strlen(realtarget) -
 				           strlen(s.docindex)] = '\0';
-				return resp_dir(fd, RELPATH(realtarget), r);
+				return resp_dir(fd, RELPATH(realtarget), req);
 			} else {
 				/* reject */
 				if (!S_ISREG(st.st_mode) || errno == EACCES) {
@@ -671,9 +671,9 @@ http_send_response(int fd, struct request *r)
 	}
 
 	/* modified since */
-	if (r->field[REQ_MOD][0]) {
+	if (req->field[REQ_MOD][0]) {
 		/* parse field */
-		if (!strptime(r->field[REQ_MOD], "%a, %d %b %Y %T GMT", &tm)) {
+		if (!strptime(req->field[REQ_MOD], "%a, %d %b %Y %T GMT", &tm)) {
 			return http_send_status(fd, S_BAD_REQUEST);
 		}
 
@@ -685,7 +685,7 @@ http_send_response(int fd, struct request *r)
 	}
 
 	/* range */
-	switch (parse_range(r->field[REQ_RANGE], st.st_size, &lower, &upper)) {
+	switch (parse_range(req->field[REQ_RANGE], st.st_size, &lower, &upper)) {
 	case S_RANGE_NOT_SATISFIABLE:
 		res.status = S_RANGE_NOT_SATISFIABLE;
 
@@ -713,5 +713,5 @@ http_send_response(int fd, struct request *r)
 		}
 	}
 
-	return resp_file(fd, RELPATH(realtarget), r, &st, mime, lower, upper);
+	return resp_file(fd, RELPATH(realtarget), req, &st, mime, lower, upper);
 }

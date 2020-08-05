@@ -25,7 +25,7 @@ static char *udsname;
 static void
 serve(int infd, struct sockaddr_storage *in_sa)
 {
-	struct request r;
+	struct request req;
 	time_t t;
 	enum status status;
 	char inaddr[INET6_ADDRSTRLEN /* > INET_ADDRSTRLEN */];
@@ -37,8 +37,8 @@ serve(int infd, struct sockaddr_storage *in_sa)
 	}
 
 	/* handle request */
-	if (!(status = http_get_request(infd, &r))) {
-		status = http_send_response(infd, &r);
+	if (!(status = http_get_request(infd, &req))) {
+		status = http_send_response(infd, &req);
 	}
 
 	/* write output to log */
@@ -52,7 +52,7 @@ serve(int infd, struct sockaddr_storage *in_sa)
 		goto cleanup;
 	}
 	printf("%s\t%s\t%d\t%s\t%s\n", tstmp, inaddr, status,
-	       r.field[REQ_HOST], r.target);
+	       req.field[REQ_HOST], req.target);
 cleanup:
 	/* clean up and finish */
 	shutdown(infd, SHUT_RD);
