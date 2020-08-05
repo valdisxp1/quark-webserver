@@ -126,11 +126,11 @@ http_send_status(int fd, enum status s)
 }
 
 static void
-decode(char src[PATH_MAX], char dest[PATH_MAX])
+decode(const char src[PATH_MAX], char dest[PATH_MAX])
 {
 	size_t i;
 	uint8_t n;
-	char *s;
+	const char *s;
 
 	for (s = src, i = 0; *s; s++, i++) {
 		if (*s == '%' && (sscanf(s + 1, "%2hhx", &n) == 1)) {
@@ -325,10 +325,10 @@ http_get_request(int fd, struct request *req)
 }
 
 static void
-encode(char src[PATH_MAX], char dest[PATH_MAX])
+encode(const char src[PATH_MAX], char dest[PATH_MAX])
 {
 	size_t i;
-	char *s;
+	const char *s;
 
 	for (s = src, i = 0; *s && i < (PATH_MAX - 4); s++) {
 		if (iscntrl(*s) || (unsigned char)*s > 127) {
@@ -396,59 +396,83 @@ squash:
 }
 
 static enum status
-parse_range(char *s, off_t size, off_t *lower, off_t *upper)
+parse_range(const char *str, off_t size, off_t *lower, off_t *upper)
 {
-	char *p, *q;
-	const char *err;
+	char first[FIELD_MAX], last[FIELD_MAX];
+	const char *p, *q, *r, *err;
 
 	/* default to the complete range */
 	*lower = 0;
 	*upper = size - 1;
 
 	/* done if no range-string is given */
-	if (s == NULL || *s == '\0') {
+	if (str == NULL || *str == '\0') {
 		return 0;
 	}
 
 	/* skip opening statement */
-	if (strncmp(s, "bytes=", sizeof("bytes=") - 1)) {
+	if (strncmp(str, "bytes=", sizeof("bytes=") - 1)) {
 		return S_BAD_REQUEST;
 	}
-	p = s + (sizeof("bytes=") - 1);
+	p = str + (sizeof("bytes=") - 1);
 
-	/* find hyphen and replace with \0 */
-	if (!(q = strchr(p, '-'))) {
+	/* check string (should only contain numbers and a hyphen) */
+	for (r = p, q = NULL; *r != '\0'; r++) {
+		if (*r < '0' || *r > '9') {
+			if (*r == '-') {
+				if (q != NULL) {
+					/* we have already seen a hyphen */
+					return S_BAD_REQUEST;
+				} else {
+					/* place q after the hyphen */
+					q = r + 1;
+				}
+			} else if (*r == ',' && r > p) {
+				/*
+				 * we refuse to accept range-lists out
+				 * of spite towards this horrible part
+				 * of the spec
+				 */
+				return S_RANGE_NOT_SATISFIABLE;
+			} else {
+				return S_BAD_REQUEST;
+			}
+		}
+	}
+	if (q == NULL) {
+		/* the input string must contain a hyphen */
 		return S_BAD_REQUEST;
 	}
-	*(q++) = '\0';
+	r = q + strlen(q);
 
 	/*
-	 *  byte-range=first\0last...
-	 *             ^      ^
-	 *             |      |
-	 *             p      q
+	 *  byte-range=first-last\0
+	 *             ^     ^   ^
+	 *             |     |   |
+	 *             p     q   r
 	 */
 
-	/*
-	 * make sure we only have a single range, and not a comma
-	 * separated list, which we will refuse to accept out of spite
-	 * towards this horrible part of the spec
-	 */
-	if (strchr(q, ',')) {
-		return S_RANGE_NOT_SATISFIABLE;
+	/* copy 'first' and 'last' to their respective arrays */
+	if ((size_t)((q - 1) - p + 1) > sizeof(first) ||
+	    (size_t)(r - q + 1) > sizeof(last)) {
+		return S_REQUEST_TOO_LARGE;
 	}
+	memcpy(first, p, (q - 1) - p);
+	first[(q - 1) - p] = '\0';
+	memcpy(last, q, r - q);
+	last[r - q] = '\0';
 
-	if (p[0] != '\0') {
+	if (first[0] != '\0') {
 		/*
-		 * Range has format "first-last" or "first-",
+		 * range has format "first-last" or "first-",
 		 * i.e. return bytes 'first' to 'last' (or the
 		 * last byte if 'last' is not given),
 		 * inclusively, and byte-numbering beginning at 0
 		 */
-		*lower = strtonum(p, 0, LLONG_MAX, &err);
+		*lower = strtonum(first, 0, LLONG_MAX, &err);
 		if (!err) {
-			if (q[0] != '\0') {
-				*upper = strtonum(q, 0, LLONG_MAX, &err);
+			if (last[0] != '\0') {
+				*upper = strtonum(last, 0, LLONG_MAX, &err);
 			} else {
 				*upper = size - 1;
 			}
@@ -466,6 +490,11 @@ parse_range(char *s, off_t size, off_t *lower, off_t *upper)
 		/* adjust upper limit to be at most the last byte */
 		*upper = MIN(*upper, size - 1);
 	} else {
+		/* last must not also be empty */
+		if (last[0] == '\0') {
+			return S_BAD_REQUEST;
+		}
+
 		/*
 		 * Range has format "-num", i.e. return the 'num'
 		 * last bytes
@@ -475,7 +504,7 @@ parse_range(char *s, off_t size, off_t *lower, off_t *upper)
 		 * use upper as a temporary storage for 'num',
 		 * as we know 'upper' is size - 1
 		 */
-		*upper = strtonum(q, 0, LLONG_MAX, &err);
+		*upper = strtonum(last, 0, LLONG_MAX, &err);
 		if (err) {
 			return S_BAD_REQUEST;
 		}
@@ -492,9 +521,6 @@ parse_range(char *s, off_t size, off_t *lower, off_t *upper)
 		*upper = size - 1;
 	}
 
-	/* reset \0 to the hyphen */
-	*(q - 1) = '-';
-
 	return 0;
 }
 
@@ -502,8 +528,9 @@ parse_range(char *s, off_t size, off_t *lower, off_t *upper)
 #define RELPATH(x) ((!*(x) || !strcmp(x, "/")) ? "." : ((x) + 1))
 
 enum status
-http_send_response(int fd, struct request *req)
+http_send_response(int fd, const struct request *req)
 {
+	enum status returnstatus;
 	struct in6_addr addr;
 	struct response res = { 0 };
 	struct stat st;
@@ -686,21 +713,22 @@ http_send_response(int fd, struct request *req)
 	}
 
 	/* range */
-	switch (parse_range(req->field[REQ_RANGE], st.st_size, &lower, &upper)) {
-	case S_RANGE_NOT_SATISFIABLE:
-		res.status = S_RANGE_NOT_SATISFIABLE;
+	if ((returnstatus = parse_range(req->field[REQ_RANGE],
+	                               st.st_size, &lower, &upper))) {
+		if (returnstatus == S_RANGE_NOT_SATISFIABLE) {
+			res.status = S_RANGE_NOT_SATISFIABLE;
 
-		if (esnprintf(res.field[RES_CONTENT_RANGE],
-		              sizeof(res.field[RES_CONTENT_RANGE]),
-		              "bytes */%zu", st.st_size)) {
-			return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
+			if (esnprintf(res.field[RES_CONTENT_RANGE],
+			              sizeof(res.field[RES_CONTENT_RANGE]),
+			              "bytes */%zu", st.st_size)) {
+				return http_send_status(fd,
+				                        S_INTERNAL_SERVER_ERROR);
+			}
+
+			return http_send_header(fd, &res);
+		} else {
+			return http_send_status(fd, returnstatus);
 		}
-
-		return http_send_header(fd, &res);
-	case S_BAD_REQUEST:
-		return http_send_status(fd, S_BAD_REQUEST);
-	default:
-		;
 	}
 
 	/* mime */

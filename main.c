@@ -23,7 +23,7 @@
 static char *udsname;
 
 static void
-serve(int infd, struct sockaddr_storage *in_sa)
+serve(int infd, const struct sockaddr_storage *in_sa)
 {
 	struct request req;
 	time_t t;

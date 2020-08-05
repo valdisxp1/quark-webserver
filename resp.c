@@ -39,7 +39,7 @@ suffix(int t)
 }
 
 static void
-html_escape(char *src, char *dst, size_t dst_siz)
+html_escape(const char *src, char *dst, size_t dst_siz)
 {
 	const struct {
 		char c;
@@ -84,7 +84,7 @@ html_escape(char *src, char *dst, size_t dst_siz)
 }
 
 enum status
-resp_dir(int fd, char *name, struct request *req)
+resp_dir(int fd, const char *name, const struct request *req)
 {
 	enum status sendstatus;
 	struct dirent **e;
@@ -155,8 +155,8 @@ cleanup:
 }
 
 enum status
-resp_file(int fd, char *name, struct request *req, struct stat *st, char *mime,
-          off_t lower, off_t upper)
+resp_file(int fd, const char *name, const struct request *req,
+          const struct stat *st, const char *mime, off_t lower, off_t upper)
 {
 	FILE *fp;
 	enum status sendstatus;

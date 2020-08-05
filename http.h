@@ -69,6 +69,6 @@ struct response {
 enum status http_send_header(int, const struct response *);
 enum status http_send_status(int, enum status);
 int http_get_request(int, struct request *);
-enum status http_send_response(int, struct request *);
+enum status http_send_response(int, const struct request *);
 
 #endif /* HTTP_H */
