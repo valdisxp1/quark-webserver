@@ -49,9 +49,7 @@ void die(const char *, ...);
 void epledge(const char *, const char *);
 void eunveil(const char *, const char *);
 
-#define TIMESTAMP_LEN 30
-
-char *timestamp(time_t, char buf[TIMESTAMP_LEN]);
+int timestamp(char *, size_t, time_t);
 int esnprintf(char *, size_t, const char *, ...);
 
 void *reallocarray(void *, size_t, size_t);

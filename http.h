@@ -48,6 +48,25 @@ enum status {
 
 extern const char *status_str[];
 
+enum res_field {
+	RES_ACCEPT_RANGES,
+	RES_ALLOW,
+	RES_LOCATION,
+	RES_LAST_MODIFIED,
+	RES_CONTENT_LENGTH,
+	RES_CONTENT_RANGE,
+	RES_CONTENT_TYPE,
+	NUM_RES_FIELDS,
+};
+
+extern const char *res_field_str[];
+
+struct response {
+	enum status status;
+	char field[NUM_RES_FIELDS][FIELD_MAX];
+};
+
+enum status http_send_header(int, const struct response *);
 enum status http_send_status(int, enum status);
 int http_get_request(int, struct request *);
 enum status http_send_response(int, struct request *);

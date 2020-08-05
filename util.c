@@ -83,12 +83,17 @@ eunveil(const char *path, const char *permissions)
 #endif /* __OpenBSD__ */
 }
 
-char *
-timestamp(time_t t, char buf[TIMESTAMP_LEN])
+int
+timestamp(char *buf, size_t len, time_t t)
 {
-	strftime(buf, TIMESTAMP_LEN, "%a, %d %b %Y %T GMT", gmtime(&t));
+	struct tm tm;
 
-	return buf;
+	if (gmtime_r(&t, &tm) == NULL ||
+	    strftime(buf, len, "%a, %d %b %Y %T GMT", &tm) == 0) {
+		return 1;
+	}
+
+	return 0;
 }
 
 int

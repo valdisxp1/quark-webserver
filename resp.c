@@ -86,10 +86,14 @@ html_escape(char *src, char *dst, size_t dst_siz)
 enum status
 resp_dir(int fd, char *name, struct request *r)
 {
+	enum status sendstatus;
 	struct dirent **e;
+	struct response res = {
+		.status                  = S_OK,
+		.field[RES_CONTENT_TYPE] = "text/html; charset=utf-8",
+	};
 	size_t i;
-	int dirlen, s;
-	static char t[TIMESTAMP_LEN];
+	int dirlen;
 	char esc[PATH_MAX /* > NAME_MAX */ * 6]; /* strlen("&...;") <= 6 */
 
 	/* read directory */
@@ -98,14 +102,8 @@ resp_dir(int fd, char *name, struct request *r)
 	}
 
 	/* send header as late as possible */
-	if (dprintf(fd,
-	            "HTTP/1.1 %d %s\r\n"
-	            "Date: %s\r\n"
-	            "Connection: close\r\n"
-		    "Content-Type: text/html; charset=utf-8\r\n"
-		    "\r\n",
-	            S_OK, status_str[S_OK], timestamp(time(NULL), t)) < 0) {
-		s = S_REQUEST_TIMEOUT;
+	if ((sendstatus = http_send_header(fd, &res)) != res.status) {
+		res.status = sendstatus;
 		goto cleanup;
 	}
 
@@ -117,7 +115,7 @@ resp_dir(int fd, char *name, struct request *r)
 		            "<title>Index of %s</title></head>\n"
 		            "\t<body>\n\t\t<a href=\"..\">..</a>",
 		            esc) < 0) {
-			s = S_REQUEST_TIMEOUT;
+			res.status = S_REQUEST_TIMEOUT;
 			goto cleanup;
 		}
 
@@ -135,18 +133,17 @@ resp_dir(int fd, char *name, struct request *r)
 			            (e[i]->d_type == DT_DIR) ? "/" : "",
 			            esc,
 			            suffix(e[i]->d_type)) < 0) {
-				s = S_REQUEST_TIMEOUT;
+				res.status = S_REQUEST_TIMEOUT;
 				goto cleanup;
 			}
 		}
 
 		/* listing footer */
 		if (dprintf(fd, "\n\t</body>\n</html>\n") < 0) {
-			s = S_REQUEST_TIMEOUT;
+			res.status = S_REQUEST_TIMEOUT;
 			goto cleanup;
 		}
 	}
-	s = S_OK;
 
 cleanup:
 	while (dirlen--) {
@@ -154,7 +151,7 @@ cleanup:
 	}
 	free(e);
 
-	return s;
+	return res.status;
 }
 
 enum status
@@ -162,51 +159,56 @@ resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
           off_t lower, off_t upper)
 {
 	FILE *fp;
-	enum status s;
+	enum status sendstatus;
+	struct response res = {
+		.status = (r->field[REQ_RANGE][0] != '\0') ?
+		          S_PARTIAL_CONTENT : S_OK,
+		.field[RES_ACCEPT_RANGES] = "bytes",
+	};
 	ssize_t bread, bwritten;
 	off_t remaining;
-	int range;
-	static char buf[BUFSIZ], *p, t1[TIMESTAMP_LEN], t2[TIMESTAMP_LEN];
+	static char buf[BUFSIZ], *p;
 
 	/* open file */
 	if (!(fp = fopen(name, "r"))) {
-		s = http_send_status(fd, S_FORBIDDEN);
+		res.status = http_send_status(fd, S_FORBIDDEN);
 		goto cleanup;
 	}
 
 	/* seek to lower bound */
 	if (fseek(fp, lower, SEEK_SET)) {
-		s = http_send_status(fd, S_INTERNAL_SERVER_ERROR);
+		res.status = http_send_status(fd, S_INTERNAL_SERVER_ERROR);
 		goto cleanup;
+	}
+
+	/* build header */
+	if (esnprintf(res.field[RES_CONTENT_LENGTH],
+	              sizeof(res.field[RES_CONTENT_LENGTH]),
+	              "%zu", upper - lower + 1)) {
+		return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
+	}
+	if (r->field[REQ_RANGE][0] != '\0') {
+		if (esnprintf(res.field[RES_CONTENT_RANGE],
+		              sizeof(res.field[RES_CONTENT_RANGE]),
+		              "bytes %zd-%zd/%zu", lower, upper,
+			      st->st_size)) {
+			return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
+		}
+	}
+	if (esnprintf(res.field[RES_CONTENT_TYPE],
+	              sizeof(res.field[RES_CONTENT_TYPE]),
+	              "%s", mime)) {
+		return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
+	}
+	if (timestamp(res.field[RES_LAST_MODIFIED],
+	              sizeof(res.field[RES_LAST_MODIFIED]),
+	              st->st_mtim.tv_sec)) {
+		return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
 	}
 
 	/* send header as late as possible */
-	range = r->field[REQ_RANGE][0];
-	s = range ? S_PARTIAL_CONTENT : S_OK;
-
-	if (dprintf(fd,
-	            "HTTP/1.1 %d %s\r\n"
-	            "Date: %s\r\n"
-	            "Connection: close\r\n"
-	            "Last-Modified: %s\r\n"
-	            "Content-Type: %s\r\n"
-	            "Content-Length: %zu\r\n"
-		    "Accept-Ranges: bytes\r\n",
-	            s, status_str[s], timestamp(time(NULL), t1),
-	            timestamp(st->st_mtim.tv_sec, t2), mime,
-	            upper - lower + 1) < 0) {
-		s = S_REQUEST_TIMEOUT;
-		goto cleanup;
-	}
-	if (range) {
-		if (dprintf(fd, "Content-Range: bytes %zd-%zd/%zu\r\n",
-		            lower, upper + (upper < 0), st->st_size) < 0) {
-			s = S_REQUEST_TIMEOUT;
-			goto cleanup;
-		}
-	}
-	if (dprintf(fd, "\r\n") < 0) {
-		s = S_REQUEST_TIMEOUT;
+	if ((sendstatus = http_send_header(fd, &res)) != res.status) {
+		res.status = sendstatus;
 		goto cleanup;
 	}
 
@@ -217,7 +219,7 @@ resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
 		while ((bread = fread(buf, 1, MIN(sizeof(buf),
 		                      (size_t)remaining), fp))) {
 			if (bread < 0) {
-				s = S_INTERNAL_SERVER_ERROR;
+				res.status = S_INTERNAL_SERVER_ERROR;
 				goto cleanup;
 			}
 			remaining -= bread;
@@ -225,7 +227,7 @@ resp_file(int fd, char *name, struct request *r, struct stat *st, char *mime,
 			while (bread > 0) {
 				bwritten = write(fd, p, bread);
 				if (bwritten <= 0) {
-					s = S_REQUEST_TIMEOUT;
+					res.status = S_REQUEST_TIMEOUT;
 					goto cleanup;
 				}
 				bread -= bwritten;
@@ -238,5 +240,5 @@ cleanup:
 		fclose(fp);
 	}
 
-	return s;
+	return res.status;
 }

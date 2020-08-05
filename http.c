@@ -48,23 +48,76 @@ const char *status_str[] = {
 	[S_VERSION_NOT_SUPPORTED] = "HTTP Version not supported",
 };
 
+const char *res_field_str[] = {
+	[RES_ACCEPT_RANGES]  = "Accept-Ranges",
+	[RES_ALLOW]          = "Allow",
+	[RES_LOCATION]       = "Location",
+	[RES_LAST_MODIFIED]  = "Last-Modified",
+	[RES_CONTENT_LENGTH] = "Content-Length",
+	[RES_CONTENT_RANGE]  = "Content-Range",
+	[RES_CONTENT_TYPE]   = "Content-Type",
+};
+
 enum status
-http_send_status(int fd, enum status s)
+http_send_header(int fd, const struct response *res)
 {
-	static char t[TIMESTAMP_LEN];
+	char t[FIELD_MAX];
+	size_t i;
+
+	if (timestamp(t, sizeof(t), time(NULL))) {
+		return S_INTERNAL_SERVER_ERROR;
+	}
 
 	if (dprintf(fd,
 	            "HTTP/1.1 %d %s\r\n"
 	            "Date: %s\r\n"
-	            "Connection: close\r\n"
-	            "%s"
-	            "Content-Type: text/html; charset=utf-8\r\n"
-	            "\r\n"
+	            "Connection: close\r\n",
+	            res->status, status_str[res->status], t) < 0) {
+		return S_REQUEST_TIMEOUT;
+	}
+
+	for (i = 0; i < NUM_RES_FIELDS; i++) {
+		if (res->field[i][0] != '\0') {
+			if (dprintf(fd, "%s: %s\r\n", res_field_str[i],
+			            res->field[i]) < 0) {
+				return S_REQUEST_TIMEOUT;
+			}
+		}
+	}
+
+	if (dprintf(fd, "\r\n") < 0) {
+		return S_REQUEST_TIMEOUT;
+	}
+
+	return res->status;
+}
+
+enum status
+http_send_status(int fd, enum status s)
+{
+	enum status sendstatus;
+
+	struct response res = {
+		.status                  = s,
+		.field[RES_CONTENT_TYPE] = "text/html; charset=utf-8",
+	};
+
+	if (s == S_METHOD_NOT_ALLOWED) {
+		if (esnprintf(res.field[RES_ALLOW],
+		              sizeof(res.field[RES_ALLOW]), "%s",
+			      "Allow: GET, HEAD")) {
+			return S_INTERNAL_SERVER_ERROR;
+		}
+	}
+
+	if ((sendstatus = http_send_header(fd, &res)) != s) {
+		return sendstatus;
+	}
+
+	if (dprintf(fd,
 	            "<!DOCTYPE html>\n<html>\n\t<head>\n"
 	            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
 	            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>\n",
-	            s, status_str[s], timestamp(time(NULL), t),
-	            (s == S_METHOD_NOT_ALLOWED) ? "Allow: HEAD, GET\r\n" : "",
 	            s, status_str[s], s, status_str[s]) < 0) {
 		return S_REQUEST_TIMEOUT;
 	}
@@ -93,7 +146,7 @@ decode(char src[PATH_MAX], char dest[PATH_MAX])
 int
 http_get_request(int fd, struct request *r)
 {
-	struct in6_addr res;
+	struct in6_addr addr;
 	size_t hlen, i, mlen;
 	ssize_t off;
 	char h[HEADER_MAX], *p, *q;
@@ -260,7 +313,7 @@ http_get_request(int fd, struct request *r)
 		p = r->field[REQ_HOST] + 1;
 
 		/* validate the contained IPv6 address */
-		if (inet_pton(AF_INET6, p, &res) != 1) {
+		if (inet_pton(AF_INET6, p, &addr) != 1) {
 			return http_send_status(fd, S_BAD_REQUEST);
 		}
 
@@ -451,13 +504,14 @@ parse_range(char *s, off_t size, off_t *lower, off_t *upper)
 enum status
 http_send_response(int fd, struct request *r)
 {
-	struct in6_addr res;
+	struct in6_addr addr;
+	struct response res = { 0 };
 	struct stat st;
 	struct tm tm = { 0 };
 	size_t len, i;
 	off_t lower, upper;
 	int hasport, ipv6host;
-	static char realtarget[PATH_MAX], tmptarget[PATH_MAX], t[TIMESTAMP_LEN];
+	static char realtarget[PATH_MAX], tmptarget[PATH_MAX];
 	char *p, *mime;
 	const char *vhostmatch, *targethost;
 
@@ -545,10 +599,12 @@ http_send_response(int fd, struct request *r)
 	/* redirect if targets differ, host is non-canonical or we prefixed */
 	if (strcmp(r->target, realtarget) || (s.vhost && vhostmatch &&
 	    strcmp(r->field[REQ_HOST], vhostmatch))) {
+		res.status = S_MOVED_PERMANENTLY;
+
 		/* encode realtarget */
 		encode(realtarget, tmptarget);
 
-		/* send redirection header */
+		/* determine target location */
 		if (s.vhost) {
 			/* absolute redirection URL */
 			targethost = r->field[REQ_HOST][0] ? vhostmatch ?
@@ -562,43 +618,31 @@ http_send_response(int fd, struct request *r)
 			 * in URLs, so we need to check if our host is one and
 			 * honor that later when we fill the "Location"-field */
 			if ((ipv6host = inet_pton(AF_INET6, targethost,
-			                          &res)) < 0) {
+			                          &addr)) < 0) {
 				return http_send_status(fd,
 				                        S_INTERNAL_SERVER_ERROR);
 			}
 
-			if (dprintf(fd,
-			            "HTTP/1.1 %d %s\r\n"
-			            "Date: %s\r\n"
-			            "Connection: close\r\n"
-			            "Location: //%s%s%s%s%s%s\r\n"
-			            "\r\n",
-			            S_MOVED_PERMANENTLY,
-			            status_str[S_MOVED_PERMANENTLY],
-				    timestamp(time(NULL), t),
-			            ipv6host ? "[" : "",
-				    targethost,
-			            ipv6host ? "]" : "", hasport ? ":" : "",
-			            hasport ? s.port : "", tmptarget) < 0) {
-				return S_REQUEST_TIMEOUT;
+			/* write location to response struct */
+			if (esnprintf(res.field[RES_LOCATION],
+			              sizeof(res.field[RES_LOCATION]),
+			              "//%s%s%s%s%s%s",
+			              ipv6host ? "[" : "",
+			              targethost,
+			              ipv6host ? "]" : "", hasport ? ":" : "",
+			              hasport ? s.port : "", tmptarget)) {
+				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 		} else {
-			/* relative redirection URL */
-			if (dprintf(fd,
-			            "HTTP/1.1 %d %s\r\n"
-			            "Date: %s\r\n"
-			            "Connection: close\r\n"
-			            "Location: %s\r\n"
-			            "\r\n",
-			            S_MOVED_PERMANENTLY,
-			            status_str[S_MOVED_PERMANENTLY],
-				    timestamp(time(NULL), t),
-				    tmptarget) < 0) {
-				return S_REQUEST_TIMEOUT;
+			/* write relative redirection URL to response struct */
+			if (esnprintf(res.field[RES_LOCATION],
+			              sizeof(res.field[RES_LOCATION]),
+			              tmptarget)) {
+				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 		}
 
-		return S_MOVED_PERMANENTLY;
+		return http_send_header(fd, &res);
 	}
 
 	if (S_ISDIR(st.st_mode)) {
@@ -635,35 +679,23 @@ http_send_response(int fd, struct request *r)
 
 		/* compare with last modification date of the file */
 		if (difftime(st.st_mtim.tv_sec, timegm(&tm)) <= 0) {
-			if (dprintf(fd,
-			            "HTTP/1.1 %d %s\r\n"
-			            "Date: %s\r\n"
-			            "Connection: close\r\n"
-				    "\r\n",
-			            S_NOT_MODIFIED, status_str[S_NOT_MODIFIED],
-			            timestamp(time(NULL), t)) < 0) {
-				return S_REQUEST_TIMEOUT;
-			}
-			return S_NOT_MODIFIED;
+			res.status = S_NOT_MODIFIED;
+			return http_send_header(fd, &res);
 		}
 	}
 
 	/* range */
 	switch (parse_range(r->field[REQ_RANGE], st.st_size, &lower, &upper)) {
 	case S_RANGE_NOT_SATISFIABLE:
-		if (dprintf(fd,
-		            "HTTP/1.1 %d %s\r\n"
-		            "Date: %s\r\n"
-		            "Content-Range: bytes */%zu\r\n"
-		            "Connection: close\r\n"
-		            "\r\n",
-		            S_RANGE_NOT_SATISFIABLE,
-		            status_str[S_RANGE_NOT_SATISFIABLE],
-		            timestamp(time(NULL), t),
-		            st.st_size) < 0) {
-			return S_REQUEST_TIMEOUT;
+		res.status = S_RANGE_NOT_SATISFIABLE;
+
+		if (esnprintf(res.field[RES_CONTENT_RANGE],
+		              sizeof(res.field[RES_CONTENT_RANGE]),
+		              "bytes */%zu", st.st_size)) {
+			return http_send_status(fd, S_INTERNAL_SERVER_ERROR);
 		}
-		return S_RANGE_NOT_SATISFIABLE;
+
+		return http_send_header(fd, &res);
 	case S_BAD_REQUEST:
 		return http_send_status(fd, S_BAD_REQUEST);
 	default:
