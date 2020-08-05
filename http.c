@@ -22,9 +22,9 @@
 #include "util.h"
 
 const char *req_field_str[] = {
-	[REQ_HOST]    = "Host",
-	[REQ_RANGE]   = "Range",
-	[REQ_MOD]     = "If-Modified-Since",
+	[REQ_HOST]              = "Host",
+	[REQ_RANGE]             = "Range",
+	[REQ_IF_MODIFIED_SINCE] = "If-Modified-Since",
 };
 
 const char *req_method_str[] = {
@@ -671,9 +671,10 @@ http_send_response(int fd, struct request *req)
 	}
 
 	/* modified since */
-	if (req->field[REQ_MOD][0]) {
+	if (req->field[REQ_IF_MODIFIED_SINCE][0]) {
 		/* parse field */
-		if (!strptime(req->field[REQ_MOD], "%a, %d %b %Y %T GMT", &tm)) {
+		if (!strptime(req->field[REQ_IF_MODIFIED_SINCE],
+		              "%a, %d %b %Y %T GMT", &tm)) {
 			return http_send_status(fd, S_BAD_REQUEST);
 		}
 
