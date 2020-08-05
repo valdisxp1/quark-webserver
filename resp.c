@@ -156,7 +156,8 @@ cleanup:
 
 enum status
 resp_file(int fd, const char *name, const struct request *req,
-          const struct stat *st, const char *mime, off_t lower, off_t upper)
+          const struct stat *st, const char *mime, size_t lower,
+          size_t upper)
 {
 	FILE *fp;
 	enum status sendstatus;
@@ -166,7 +167,7 @@ resp_file(int fd, const char *name, const struct request *req,
 		.field[RES_ACCEPT_RANGES] = "bytes",
 	};
 	ssize_t bread, bwritten;
-	off_t remaining;
+	size_t remaining;
 	static char buf[BUFSIZ], *p;
 
 	/* open file */
@@ -217,7 +218,7 @@ resp_file(int fd, const char *name, const struct request *req,
 		remaining = upper - lower + 1;
 
 		while ((bread = fread(buf, 1, MIN(sizeof(buf),
-		                      (size_t)remaining), fp))) {
+		                      remaining), fp))) {
 			if (bread < 0) {
 				res.status = S_INTERNAL_SERVER_ERROR;
 				goto cleanup;
