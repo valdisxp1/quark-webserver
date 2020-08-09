@@ -178,7 +178,6 @@ main(int argc, char *argv[])
 	struct passwd *pwd = NULL;
 	struct rlimit rlim;
 	struct sockaddr_storage in_sa;
-	pid_t cpid, wpid, spid;
 	size_t i;
 	socklen_t in_sa_len;
 	int insock, status = 0, infd;
@@ -312,7 +311,7 @@ main(int argc, char *argv[])
 	insock = udsname ? sock_get_uds(udsname, pwd->pw_uid, grp->gr_gid) :
 	                   sock_get_ips(s.host, s.port);
 
-	switch (cpid = fork()) {
+	switch (fork()) {
 	case -1:
 		warn("fork:");
 		break;
@@ -371,7 +370,7 @@ main(int argc, char *argv[])
 			}
 
 			/* fork and handle */
-			switch ((spid = fork())) {
+			switch (fork()) {
 			case 0:
 				serve(infd, &in_sa);
 				exit(0);
@@ -397,7 +396,7 @@ main(int argc, char *argv[])
 			epledge("stdio", NULL);
 		}
 
-		while ((wpid = wait(&status)) > 0)
+		while (wait(&status) > 0)
 			;
 	}
 
