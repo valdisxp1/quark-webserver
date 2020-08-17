@@ -23,7 +23,7 @@ struct map {
 	char *to;
 };
 
-extern struct server {
+struct server {
 	char *host;
 	char *port;
 	char *docindex;
@@ -32,7 +32,7 @@ extern struct server {
 	size_t vhost_len;
 	struct map *map;
 	size_t map_len;
-} s;
+};
 
 #undef MIN
 #define MIN(x,y)  ((x) < (y) ? (x) : (y))

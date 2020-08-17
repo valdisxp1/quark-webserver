@@ -16,7 +16,6 @@
 #include "util.h"
 
 char *argv0;
-struct server s;
 
 static void
 verr(const char *fmt, va_list ap)

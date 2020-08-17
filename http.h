@@ -4,6 +4,8 @@
 
 #include <limits.h>
 
+#include "util.h"
+
 #define HEADER_MAX 4096
 #define FIELD_MAX 200
 
@@ -69,6 +71,7 @@ struct response {
 enum status http_send_header(int, const struct response *);
 enum status http_send_status(int, enum status);
 int http_get_request(int, struct request *);
-enum status http_send_response(int, const struct request *);
+enum status http_send_response(int, const struct request *,
+                               const struct server *);
 
 #endif /* HTTP_H */

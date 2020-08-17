@@ -23,7 +23,7 @@
 static char *udsname;
 
 static void
-serve(int infd, const struct sockaddr_storage *in_sa)
+serve(int infd, const struct sockaddr_storage *in_sa, const struct server *s)
 {
 	struct request req;
 	time_t t;
@@ -38,7 +38,7 @@ serve(int infd, const struct sockaddr_storage *in_sa)
 
 	/* handle request */
 	if (!(status = http_get_request(infd, &req))) {
-		status = http_send_response(infd, &req);
+		status = http_send_response(infd, &req, s);
 	}
 
 	/* write output to log */
@@ -177,6 +177,9 @@ main(int argc, char *argv[])
 	struct group *grp = NULL;
 	struct passwd *pwd = NULL;
 	struct rlimit rlim;
+	struct server s = {
+		.docindex = "index.html",
+	};
 	struct sockaddr_storage in_sa;
 	size_t i;
 	socklen_t in_sa_len;
@@ -189,13 +192,6 @@ main(int argc, char *argv[])
 	char *servedir = ".";
 	char *user = "nobody";
 	char *group = "nogroup";
-
-	s.host = s.port = NULL;
-	s.vhost = NULL;
-	s.map = NULL;
-	s.vhost_len = s.map_len = 0;
-	s.docindex = "index.html";
-	s.listdirs = 0;
 
 	ARGBEGIN {
 	case 'd':
@@ -372,7 +368,7 @@ main(int argc, char *argv[])
 			/* fork and handle */
 			switch (fork()) {
 			case 0:
-				serve(infd, &in_sa);
+				serve(infd, &in_sa, &s);
 				exit(0);
 				break;
 			case -1:
