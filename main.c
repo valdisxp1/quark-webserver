@@ -37,8 +37,10 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *s)
 	}
 
 	/* handle request */
-	if (!(status = http_get_request(infd, &req))) {
-		status = http_send_response(infd, &req, s);
+	req.fd = infd;
+
+	if (!(status = http_get_request(&req))) {
+		status = http_send_response(&req, s);
 	}
 
 	/* write output to log */

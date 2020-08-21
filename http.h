@@ -27,6 +27,8 @@ enum req_method {
 extern const char *req_method_str[];
 
 struct request {
+	int fd;
+	char header[HEADER_MAX];
 	enum req_method method;
 	char target[PATH_MAX];
 	char field[NUM_REQ_FIELDS][FIELD_MAX];
@@ -70,8 +72,8 @@ struct response {
 
 enum status http_send_header(int, const struct response *);
 enum status http_send_status(int, enum status);
-int http_get_request(int, struct request *);
-enum status http_send_response(int, const struct request *,
+int http_get_request(struct request *);
+enum status http_send_response(const struct request *,
                                const struct server *);
 
 #endif /* HTTP_H */
