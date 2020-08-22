@@ -232,9 +232,9 @@ http_parse_header(const char *h, struct request *req)
 	if (q - p + 1 > PATH_MAX) {
 		return S_REQUEST_TOO_LARGE;
 	}
-	memcpy(req->target, p, q - p);
-	req->target[q - p] = '\0';
-	decode(req->target, req->target);
+	memcpy(req->uri, p, q - p);
+	req->uri[q - p] = '\0';
+	decode(req->uri, req->uri);
 
 	/* basis for next step */
 	p = q + 1;
@@ -566,7 +566,7 @@ http_prepare_response(const struct request *req, struct response *res,
 	memset(res, 0, sizeof(*res));
 
 	/* make a working copy of the URI and normalize it */
-	memcpy(realuri, req->target, sizeof(realuri));
+	memcpy(realuri, req->uri, sizeof(realuri));
 	if (normabspath(realuri)) {
 		return S_BAD_REQUEST;
 	}
@@ -593,7 +593,7 @@ http_prepare_response(const struct request *req, struct response *res,
 		}
 	}
 
-	/* apply target prefix mapping */
+	/* apply URI prefix mapping */
 	for (i = 0; i < s->map_len; i++) {
 		len = strlen(s->map[i].from);
 		if (!strncmp(realuri, s->map[i].from, len)) {
@@ -604,7 +604,7 @@ http_prepare_response(const struct request *req, struct response *res,
 				continue;
 			}
 
-			/* swap out target prefix */
+			/* swap out URI prefix */
 			memmove(realuri, realuri + len, strlen(realuri) + 1);
 			if (prepend(realuri, LEN(realuri), s->map[i].to)) {
 				return S_REQUEST_TOO_LARGE;
@@ -636,7 +636,7 @@ http_prepare_response(const struct request *req, struct response *res,
 	}
 
 	/*
-	 * reject hidden target, except if it is a well-known URI
+	 * reject hidden targets, except if it is a well-known URI
 	 * according to RFC 8615
 	 */
 	if (strstr(realuri, "/.") && strncmp(realuri,
@@ -648,7 +648,7 @@ http_prepare_response(const struct request *req, struct response *res,
 	 * redirect if the original URI and the "real" URI differ or if
 	 * the requested host is non-canonical
 	 */
-	if (strcmp(req->target, realuri) || (s->vhost && vhost &&
+	if (strcmp(req->uri, realuri) || (s->vhost && vhost &&
 	    strcmp(req->field[REQ_HOST], vhost->chost))) {
 		res->status = S_MOVED_PERMANENTLY;
 
@@ -700,11 +700,11 @@ http_prepare_response(const struct request *req, struct response *res,
 		 * (optionally including the vhost servedir as a prefix)
 		 * into the actual response-path
 		 */
-		if (esnprintf(res->uri, sizeof(res->uri), "%s", req->target)) {
+		if (esnprintf(res->uri, sizeof(res->uri), "%s", req->uri)) {
 			return S_REQUEST_TOO_LARGE;
 		}
 		if (esnprintf(res->path, sizeof(res->path), "%s%s",
-		    vhost ? vhost->dir : "", RELPATH(req->target))) {
+		    vhost ? vhost->dir : "", RELPATH(req->uri))) {
 			return S_REQUEST_TOO_LARGE;
 		}
 	}
@@ -715,7 +715,7 @@ http_prepare_response(const struct request *req, struct response *res,
 		 * the URI
 		 */
 		if (esnprintf(tmpuri, sizeof(tmpuri), "%s%s",
-		              req->target, s->docindex)) {
+		              req->uri, s->docindex)) {
 			return S_REQUEST_TOO_LARGE;
 		}
 

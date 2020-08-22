@@ -64,7 +64,7 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *s)
 		goto cleanup;
 	}
 	printf("%s\t%s\t%d\t%s\t%s\n", tstmp, inaddr, status,
-	       c.req.field[REQ_HOST], c.req.target);
+	       c.req.field[REQ_HOST], c.req.uri);
 cleanup:
 	/* clean up and finish */
 	shutdown(c.fd, SHUT_RD);

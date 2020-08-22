@@ -28,7 +28,7 @@ extern const char *req_method_str[];
 
 struct request {
 	enum req_method method;
-	char target[PATH_MAX];
+	char uri[PATH_MAX];
 	char field[NUM_REQ_FIELDS][FIELD_MAX];
 };
 

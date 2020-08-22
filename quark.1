@@ -1,4 +1,4 @@
-.Dd 2020-08-18
+.Dd 2020-08-22
 .Dt QUARK 1
 .Os suckless.org
 .Sh NAME
@@ -63,7 +63,7 @@ The default is "index.html".
 .It Fl l
 Enable directory listing.
 .It Fl m Ar map
-Add the target prefix mapping rule specified by
+Add the URI prefix mapping rule specified by
 .Ar map ,
 which has the form
 .Qq Pa from to [chost] ,
@@ -72,7 +72,7 @@ escaped with '\\'.
 .Pp
 The prefix
 .Pa from
-of all matching targets is replaced with
+of all matching URIs is replaced with
 .Pa to ,
 optionally limited to the canonical virtual host
 .Pa chost .
@@ -117,7 +117,7 @@ is redirected to the canonical host
 .Pa chost ,
 if they differ, using the directory
 .Pa dir
-as the root directory, optionally prefixing the target with
+as the root directory, optionally prefixing the URI with
 .Pa prefix .
 If any virtual hosts are specified, all requests on non-matching
 hosts are discarded.
