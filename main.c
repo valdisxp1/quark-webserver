@@ -16,6 +16,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "resp.h"
 #include "http.h"
 #include "sock.h"
 #include "util.h"
@@ -37,12 +38,19 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *s)
 	}
 
 	/* handle request */
-	if ((status = http_recv_header(c.fd, c.header, LEN(c.header), &c.off))) {
-		status = http_send_status(c.fd, status);
-	} else if ((status = http_parse_header(c.header, &c.req))) {
+	if ((status = http_recv_header(c.fd, c.header, LEN(c.header), &c.off)) ||
+	    (status = http_parse_header(c.header, &c.req)) ||
+	    (status = http_prepare_response(&c.req, &c.res, s))) {
 		status = http_send_status(c.fd, status);
 	} else {
-		status = http_send_response(c.fd, &c.req, s);
+		status = http_send_header(c.fd, &c.res);
+
+		/* send data */
+		if (c.res.type == RESTYPE_FILE) {
+			resp_file(c.fd, &c.res);
+		} else if (c.res.type == RESTYPE_DIRLISTING) {
+			resp_dir(c.fd, &c.res);
+		}
 	}
 
 	/* write output to log */

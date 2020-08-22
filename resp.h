@@ -7,8 +7,7 @@
 
 #include "http.h"
 
-enum status resp_dir(int, const char *, const struct request *);
-enum status resp_file(int, const char *, const struct request *,
-                      const struct stat *, const char *, size_t, size_t);
+enum status resp_dir(int, const struct response *);
+enum status resp_file(int, const struct response *);
 
 #endif /* RESP_H */

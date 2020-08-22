@@ -3,7 +3,6 @@
 #define HTTP_H
 
 #include <limits.h>
-#include <sys/stat.h>
 
 #include "util.h"
 
@@ -67,8 +66,9 @@ enum res_field {
 extern const char *res_field_str[];
 
 enum res_type {
+	RESTYPE_ERROR,
 	RESTYPE_FILE,
-	RESTYPE_DIR,
+	RESTYPE_DIRLISTING,
 	NUM_RES_TYPES,
 };
 
@@ -76,10 +76,9 @@ struct response {
 	enum res_type type;
 	enum status status;
 	char field[NUM_RES_FIELDS][FIELD_MAX];
+	char uri[PATH_MAX];
 	char path[PATH_MAX];
-	struct stat st;
 	struct {
-		char *mime;
 		size_t lower;
 		size_t upper;
 	} file;
@@ -106,7 +105,7 @@ enum status http_send_header(int, const struct response *);
 enum status http_send_status(int, enum status);
 enum status http_recv_header(int, char *, size_t, size_t *);
 enum status http_parse_header(const char *, struct request *);
-enum status http_send_response(int fd, const struct request *,
-                               const struct server *);
+enum status http_prepare_response(const struct request *, struct response *,
+                                  const struct server *);
 
 #endif /* HTTP_H */

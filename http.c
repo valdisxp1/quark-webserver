@@ -61,7 +61,7 @@ const char *res_field_str[] = {
 enum status
 http_send_header(int fd, const struct response *res)
 {
-	char t[FIELD_MAX];
+	char t[FIELD_MAX], esc[PATH_MAX];
 	size_t i;
 
 	if (timestamp(t, sizeof(t), time(NULL))) {
@@ -87,6 +87,18 @@ http_send_header(int fd, const struct response *res)
 
 	if (dprintf(fd, "\r\n") < 0) {
 		return S_REQUEST_TIMEOUT;
+	}
+
+	/* listing header */
+	if (res->type == RESTYPE_DIRLISTING) {
+		html_escape(res->uri, esc, sizeof(esc));
+		if (dprintf(fd,
+		            "<!DOCTYPE html>\n<html>\n\t<head>"
+		            "<title>Index of %s</title></head>\n"
+		            "\t<body>\n\t\t<a href=\"..\">..</a>",
+		            esc) < 0) {
+			return S_REQUEST_TIMEOUT;
+		}
 	}
 
 	return res->status;
@@ -536,93 +548,90 @@ parse_range(const char *str, size_t size, size_t *lower, size_t *upper)
 #define RELPATH(x) ((!*(x) || !strcmp(x, "/")) ? "." : ((x) + 1))
 
 enum status
-http_send_response(int fd, const struct request *req, const struct server *s)
+http_prepare_response(const struct request *req, struct response *res,
+                      const struct server *s)
 {
 	enum status returnstatus;
 	struct in6_addr addr;
-	struct response res = { 0 };
 	struct stat st;
 	struct tm tm = { 0 };
+	struct vhost *vhost;
 	size_t len, i;
-	size_t lower, upper;
 	int hasport, ipv6host;
-	static char realtarget[PATH_MAX], tmptarget[PATH_MAX];
+	static char realuri[PATH_MAX], tmpuri[PATH_MAX];
 	char *p, *mime;
-	const char *vhostmatch, *targethost;
+	const char *targethost;
 
-	/* make a working copy of the target */
-	memcpy(realtarget, req->target, sizeof(realtarget));
+	/* empty all response fields */
+	memset(res, 0, sizeof(*res));
+
+	/* make a working copy of the URI and normalize it */
+	memcpy(realuri, req->target, sizeof(realuri));
+	if (normabspath(realuri)) {
+		return S_BAD_REQUEST;
+	}
 
 	/* match vhost */
-	vhostmatch = NULL;
+	vhost = NULL;
 	if (s->vhost) {
 		for (i = 0; i < s->vhost_len; i++) {
-			/* switch to vhost directory if there is a match */
-			if (!regexec(&(s->vhost[i].re), req->field[REQ_HOST], 0,
-			             NULL, 0)) {
-				if (chdir(s->vhost[i].dir) < 0) {
-					return http_send_status(fd, (errno == EACCES) ?
-					                        S_FORBIDDEN : S_NOT_FOUND);
-				}
-				vhostmatch = s->vhost[i].chost;
+			if (!regexec(&(s->vhost[i].re), req->field[REQ_HOST],
+			             0, NULL, 0)) {
+				/* we have a matching vhost */
+				vhost = &(s->vhost[i]);
 				break;
 			}
 		}
 		if (i == s->vhost_len) {
-			return http_send_status(fd, S_NOT_FOUND);
+			return S_NOT_FOUND;
 		}
 
-		/* if we have a vhost prefix, prepend it to the target */
-		if (s->vhost[i].prefix) {
-			if (esnprintf(tmptarget, sizeof(tmptarget), "%s%s",
-			              s->vhost[i].prefix, realtarget)) {
-				return http_send_status(fd, S_REQUEST_TOO_LARGE);
-			}
-			memcpy(realtarget, tmptarget, sizeof(realtarget));
+		/* if we have a vhost prefix, prepend it to the URI */
+		if (vhost->prefix &&
+		    prepend(realuri, LEN(realuri), vhost->prefix)) {
+			return S_REQUEST_TOO_LARGE;
 		}
 	}
 
 	/* apply target prefix mapping */
 	for (i = 0; i < s->map_len; i++) {
 		len = strlen(s->map[i].from);
-		if (!strncmp(realtarget, s->map[i].from, len)) {
+		if (!strncmp(realuri, s->map[i].from, len)) {
 			/* match canonical host if vhosts are enabled and
 			 * the mapping specifies a canonical host */
 			if (s->vhost && s->map[i].chost &&
-			    strcmp(s->map[i].chost, vhostmatch)) {
+			    strcmp(s->map[i].chost, vhost->chost)) {
 				continue;
 			}
 
 			/* swap out target prefix */
-			if (esnprintf(tmptarget, sizeof(tmptarget), "%s%s",
-			              s->map[i].to, realtarget + len)) {
-				return http_send_status(fd, S_REQUEST_TOO_LARGE);
+			memmove(realuri, realuri + len, strlen(realuri) + 1);
+			if (prepend(realuri, LEN(realuri), s->map[i].to)) {
+				return S_REQUEST_TOO_LARGE;
 			}
-			memcpy(realtarget, tmptarget, sizeof(realtarget));
 			break;
 		}
 	}
 
-	/* normalize target */
-	if (normabspath(realtarget)) {
-		return http_send_status(fd, S_BAD_REQUEST);
+	/* normalize URI again, in case we introduced dirt */
+	if (normabspath(realuri)) {
+		return S_BAD_REQUEST;
 	}
 
-	/* stat the target */
-	if (stat(RELPATH(realtarget), &st) < 0) {
-		return http_send_status(fd, (errno == EACCES) ?
-		                        S_FORBIDDEN : S_NOT_FOUND);
+	/* stat the relative path derived from the URI */
+	if (stat(RELPATH(realuri), &st) < 0) {
+		return (errno == EACCES) ? S_FORBIDDEN : S_NOT_FOUND;
 	}
 
 	if (S_ISDIR(st.st_mode)) {
-		/* add / to target if not present */
-		len = strlen(realtarget);
-		if (len >= PATH_MAX - 2) {
-			return http_send_status(fd, S_REQUEST_TOO_LARGE);
+		/* append '/' to URI if not present */
+		len = strlen(realuri);
+		if (len + 1 + 1 > PATH_MAX) {
+			return S_REQUEST_TOO_LARGE;
 		}
-		if (len && realtarget[len - 1] != '/') {
-			realtarget[len] = '/';
-			realtarget[len + 1] = '\0';
+		if (len > 0 && realuri[len - 1] != '/') {
+			realuri[len] = '/';
+			realuri[len + 1] = '\0';
 		}
 	}
 
@@ -630,24 +639,27 @@ http_send_response(int fd, const struct request *req, const struct server *s)
 	 * reject hidden target, except if it is a well-known URI
 	 * according to RFC 8615
 	 */
-	if (strstr(realtarget, "/.") && strncmp(realtarget,
+	if (strstr(realuri, "/.") && strncmp(realuri,
 	    "/.well-known/", sizeof("/.well-known/") - 1)) {
-		return http_send_status(fd, S_FORBIDDEN);
+		return S_FORBIDDEN;
 	}
 
-	/* redirect if targets differ, host is non-canonical or we prefixed */
-	if (strcmp(req->target, realtarget) || (s->vhost && vhostmatch &&
-	    strcmp(req->field[REQ_HOST], vhostmatch))) {
-		res.status = S_MOVED_PERMANENTLY;
+	/*
+	 * redirect if the original URI and the "real" URI differ or if
+	 * the requested host is non-canonical
+	 */
+	if (strcmp(req->target, realuri) || (s->vhost && vhost &&
+	    strcmp(req->field[REQ_HOST], vhost->chost))) {
+		res->status = S_MOVED_PERMANENTLY;
 
-		/* encode realtarget */
-		encode(realtarget, tmptarget);
+		/* encode realuri */
+		encode(realuri, tmpuri);
 
 		/* determine target location */
 		if (s->vhost) {
 			/* absolute redirection URL */
-			targethost = req->field[REQ_HOST][0] ? vhostmatch ?
-			             vhostmatch : req->field[REQ_HOST] : s->host ?
+			targethost = req->field[REQ_HOST][0] ? vhost->chost ?
+			             vhost->chost : req->field[REQ_HOST] : s->host ?
 			             s->host : "localhost";
 
 			/* do we need to add a port to the Location? */
@@ -658,53 +670,74 @@ http_send_response(int fd, const struct request *req, const struct server *s)
 			 * honor that later when we fill the "Location"-field */
 			if ((ipv6host = inet_pton(AF_INET6, targethost,
 			                          &addr)) < 0) {
-				return http_send_status(fd,
-				                        S_INTERNAL_SERVER_ERROR);
+				return S_INTERNAL_SERVER_ERROR;
 			}
 
 			/* write location to response struct */
-			if (esnprintf(res.field[RES_LOCATION],
-			              sizeof(res.field[RES_LOCATION]),
+			if (esnprintf(res->field[RES_LOCATION],
+			              sizeof(res->field[RES_LOCATION]),
 			              "//%s%s%s%s%s%s",
 			              ipv6host ? "[" : "",
 			              targethost,
 			              ipv6host ? "]" : "", hasport ? ":" : "",
-			              hasport ? s->port : "", tmptarget)) {
-				return http_send_status(fd, S_REQUEST_TOO_LARGE);
+			              hasport ? s->port : "", tmpuri)) {
+				return S_REQUEST_TOO_LARGE;
 			}
 		} else {
-			/* write relative redirection URL to response struct */
-			if (esnprintf(res.field[RES_LOCATION],
-			              sizeof(res.field[RES_LOCATION]),
-			              tmptarget)) {
-				return http_send_status(fd, S_REQUEST_TOO_LARGE);
+			/* write relative redirection URI to response struct */
+			if (esnprintf(res->field[RES_LOCATION],
+			              sizeof(res->field[RES_LOCATION]),
+			              "%s", tmpuri)) {
+				return S_REQUEST_TOO_LARGE;
 			}
 		}
 
-		return http_send_header(fd, &res);
+		return 0;
+	} else {
+		/*
+		 * the URI is well-formed, we can now write the URI into
+		 * the response-URI and corresponding relative path
+		 * (optionally including the vhost servedir as a prefix)
+		 * into the actual response-path
+		 */
+		if (esnprintf(res->uri, sizeof(res->uri), "%s", req->target)) {
+			return S_REQUEST_TOO_LARGE;
+		}
+		if (esnprintf(res->path, sizeof(res->path), "%s%s",
+		    vhost ? vhost->dir : "", RELPATH(req->target))) {
+			return S_REQUEST_TOO_LARGE;
+		}
 	}
 
 	if (S_ISDIR(st.st_mode)) {
-		/* append docindex to target */
-		if (esnprintf(realtarget, sizeof(realtarget), "%s%s",
+		/*
+		 * check if the directory index exists by appending it to
+		 * the URI
+		 */
+		if (esnprintf(tmpuri, sizeof(tmpuri), "%s%s",
 		              req->target, s->docindex)) {
-			return http_send_status(fd, S_REQUEST_TOO_LARGE);
+			return S_REQUEST_TOO_LARGE;
 		}
 
 		/* stat the docindex, which must be a regular file */
-		if (stat(RELPATH(realtarget), &st) < 0 || !S_ISREG(st.st_mode)) {
+		if (stat(RELPATH(tmpuri), &st) < 0 || !S_ISREG(st.st_mode)) {
 			if (s->listdirs) {
-				/* remove index suffix and serve dir */
-				realtarget[strlen(realtarget) -
-				           strlen(s->docindex)] = '\0';
-				return resp_dir(fd, RELPATH(realtarget), req);
+				/* serve directory listing */
+				res->type = RESTYPE_DIRLISTING;
+				res->status = (access(res->path, R_OK)) ?
+				              S_FORBIDDEN : S_OK;
+
+				if (esnprintf(res->field[RES_CONTENT_TYPE],
+				              sizeof(res->field[RES_CONTENT_TYPE]),
+					      "%s", "text/html; charset=utf-8")) {
+					return S_INTERNAL_SERVER_ERROR;
+				}
+
+				return 0;
 			} else {
 				/* reject */
-				if (!S_ISREG(st.st_mode) || errno == EACCES) {
-					return http_send_status(fd, S_FORBIDDEN);
-				} else {
-					return http_send_status(fd, S_NOT_FOUND);
-				}
+				return (!S_ISREG(st.st_mode) || errno == EACCES) ?
+				       S_FORBIDDEN : S_NOT_FOUND;
 			}
 		}
 	}
@@ -714,39 +747,39 @@ http_send_response(int fd, const struct request *req, const struct server *s)
 		/* parse field */
 		if (!strptime(req->field[REQ_IF_MODIFIED_SINCE],
 		              "%a, %d %b %Y %T GMT", &tm)) {
-			return http_send_status(fd, S_BAD_REQUEST);
+			return S_BAD_REQUEST;
 		}
 
 		/* compare with last modification date of the file */
 		if (difftime(st.st_mtim.tv_sec, timegm(&tm)) <= 0) {
-			res.status = S_NOT_MODIFIED;
-			return http_send_header(fd, &res);
+			res->status = S_NOT_MODIFIED;
+			return 0;
 		}
 	}
 
 	/* range */
-	if ((returnstatus = parse_range(req->field[REQ_RANGE],
-	                               st.st_size, &lower, &upper))) {
+	if ((returnstatus = parse_range(req->field[REQ_RANGE], st.st_size,
+	                                &(res->file.lower),
+	                                &(res->file.upper)))) {
 		if (returnstatus == S_RANGE_NOT_SATISFIABLE) {
-			res.status = S_RANGE_NOT_SATISFIABLE;
+			res->status = S_RANGE_NOT_SATISFIABLE;
 
-			if (esnprintf(res.field[RES_CONTENT_RANGE],
-			              sizeof(res.field[RES_CONTENT_RANGE]),
+			if (esnprintf(res->field[RES_CONTENT_RANGE],
+			              sizeof(res->field[RES_CONTENT_RANGE]),
 			              "bytes */%zu", st.st_size)) {
-				return http_send_status(fd,
-				                        S_INTERNAL_SERVER_ERROR);
+				return S_INTERNAL_SERVER_ERROR;
 			}
 
-			return http_send_header(fd, &res);
+			return 0;
 		} else {
-			return http_send_status(fd, returnstatus);
+			return returnstatus;
 		}
 	}
 
 	/* mime */
 	mime = "application/octet-stream";
-	if ((p = strrchr(realtarget, '.'))) {
-		for (i = 0; i < sizeof(mimes) / sizeof(*mimes); i++) {
+	if ((p = strrchr(realuri, '.'))) {
+		for (i = 0; i < LEN(mimes); i++) {
 			if (!strcmp(mimes[i].ext, p + 1)) {
 				mime = mimes[i].type;
 				break;
@@ -754,5 +787,43 @@ http_send_response(int fd, const struct request *req, const struct server *s)
 		}
 	}
 
-	return resp_file(fd, RELPATH(realtarget), req, &st, mime, lower, upper);
+	/* fill response struct */
+	res->type = RESTYPE_FILE;
+
+	/* check if file is readable */
+	res->status = (access(res->path, R_OK)) ? S_FORBIDDEN :
+	              (req->field[REQ_RANGE][0] != '\0') ?
+	              S_PARTIAL_CONTENT : S_OK;
+
+	if (esnprintf(res->field[RES_ACCEPT_RANGES],
+	              sizeof(res->field[RES_ACCEPT_RANGES]),
+		      "%s", "bytes")) {
+		return S_INTERNAL_SERVER_ERROR;
+	}
+
+	if (esnprintf(res->field[RES_CONTENT_LENGTH],
+	              sizeof(res->field[RES_CONTENT_LENGTH]),
+	              "%zu", res->file.upper - res->file.lower + 1)) {
+		return S_INTERNAL_SERVER_ERROR;
+	}
+	if (req->field[REQ_RANGE][0] != '\0') {
+		if (esnprintf(res->field[RES_CONTENT_RANGE],
+		              sizeof(res->field[RES_CONTENT_RANGE]),
+		              "bytes %zd-%zd/%zu", res->file.lower,
+			      res->file.upper, st.st_size)) {
+			return S_INTERNAL_SERVER_ERROR;
+		}
+	}
+	if (esnprintf(res->field[RES_CONTENT_TYPE],
+	              sizeof(res->field[RES_CONTENT_TYPE]),
+	              "%s", mime)) {
+		return S_INTERNAL_SERVER_ERROR;
+	}
+	if (timestamp(res->field[RES_LAST_MODIFIED],
+	              sizeof(res->field[RES_LAST_MODIFIED]),
+	              st.st_mtim.tv_sec)) {
+		return S_INTERNAL_SERVER_ERROR;
+	}
+
+	return 0;
 }
