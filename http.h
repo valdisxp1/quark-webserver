@@ -27,8 +27,6 @@ enum req_method {
 extern const char *req_method_str[];
 
 struct request {
-	char header[HEADER_MAX]; /* deprecated */ 
-
 	enum req_method method;
 	char target[PATH_MAX];
 	char field[NUM_REQ_FIELDS][FIELD_MAX];
