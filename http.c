@@ -143,43 +143,51 @@ decode(const char src[PATH_MAX], char dest[PATH_MAX])
 	dest[i] = '\0';
 }
 
-int
-http_get_request(int fd, struct request *req)
+enum status
+http_recv_header(int fd, char *h, size_t hsiz, size_t *off)
+{
+	ssize_t r;
+
+	if (h == NULL || off == NULL || *off > hsiz) {
+		return S_INTERNAL_SERVER_ERROR;
+	}
+
+	while (1) {
+		if ((r = read(fd, h + *off, hsiz - *off)) <= 0) {
+			return S_REQUEST_TIMEOUT;
+		}
+		*off += r;
+
+		/* check if we are done (header terminated) */
+		if (*off >= 4 && !memcmp(h + *off - 4, "\r\n\r\n", 4)) {
+			break;
+		}
+
+		/* buffer is full or read over, but header is not terminated */
+		if (r == 0 || *off == hsiz) {
+			return S_REQUEST_TOO_LARGE;
+		}
+	}
+
+	/* header is complete, remove last \r\n and null-terminate */
+	h[*off - 2] = '\0';
+
+	/* set *off to 0 to indicate we are finished */
+	*off = 0;
+
+	return 0;
+}
+
+enum status
+http_parse_header(const char *h, struct request *req)
 {
 	struct in6_addr addr;
-	size_t hlen, i, mlen;
-	ssize_t off;
-	char *h = req->header, *p, *q;
+	size_t i, mlen;
+	const char *p, *q;
+	char *m, *n;
 
 	/* empty all fields */
 	memset(req, 0, sizeof(*req));
-
-	/*
-	 * receive header
-	 */
-	for (hlen = 0; ;) {
-		if ((off = read(fd, h + hlen, sizeof(h) - hlen)) < 0) {
-			return http_send_status(fd, S_REQUEST_TIMEOUT);
-		} else if (off == 0) {
-			break;
-		}
-		hlen += off;
-		if (hlen >= 4 && !memcmp(h + hlen - 4, "\r\n\r\n", 4)) {
-			break;
-		}
-		if (hlen == sizeof(h)) {
-			return http_send_status(fd, S_REQUEST_TOO_LARGE);
-		}
-	}
-
-	/* remove terminating empty line */
-	if (hlen < 2) {
-		return http_send_status(fd, S_BAD_REQUEST);
-	}
-	hlen -= 2;
-
-	/* null-terminate the header */
-	h[hlen] = '\0';
 
 	/*
 	 * parse request line
@@ -194,12 +202,12 @@ http_get_request(int fd, struct request *req)
 		}
 	}
 	if (i == NUM_REQ_METHODS) {
-		return http_send_status(fd, S_METHOD_NOT_ALLOWED);
+		return S_METHOD_NOT_ALLOWED;
 	}
 
 	/* a single space must follow the method */
 	if (h[mlen] != ' ') {
-		return http_send_status(fd, S_BAD_REQUEST);
+		return S_BAD_REQUEST;
 	}
 
 	/* basis for next step */
@@ -207,13 +215,13 @@ http_get_request(int fd, struct request *req)
 
 	/* TARGET */
 	if (!(q = strchr(p, ' '))) {
-		return http_send_status(fd, S_BAD_REQUEST);
+		return S_BAD_REQUEST;
 	}
-	*q = '\0';
 	if (q - p + 1 > PATH_MAX) {
-		return http_send_status(fd, S_REQUEST_TOO_LARGE);
+		return S_REQUEST_TOO_LARGE;
 	}
-	memcpy(req->target, p, q - p + 1);
+	memcpy(req->target, p, q - p);
+	req->target[q - p] = '\0';
 	decode(req->target, req->target);
 
 	/* basis for next step */
@@ -221,18 +229,18 @@ http_get_request(int fd, struct request *req)
 
 	/* HTTP-VERSION */
 	if (strncmp(p, "HTTP/", sizeof("HTTP/") - 1)) {
-		return http_send_status(fd, S_BAD_REQUEST);
+		return S_BAD_REQUEST;
 	}
 	p += sizeof("HTTP/") - 1;
 	if (strncmp(p, "1.0", sizeof("1.0") - 1) &&
 	    strncmp(p, "1.1", sizeof("1.1") - 1)) {
-		return http_send_status(fd, S_VERSION_NOT_SUPPORTED);
+		return S_VERSION_NOT_SUPPORTED;
 	}
 	p += sizeof("1.*") - 1;
 
 	/* check terminator */
 	if (strncmp(p, "\r\n", sizeof("\r\n") - 1)) {
-		return http_send_status(fd, S_BAD_REQUEST);
+		return S_BAD_REQUEST;
 	}
 
 	/* basis for next step */
@@ -253,7 +261,7 @@ http_get_request(int fd, struct request *req)
 		if (i == NUM_REQ_FIELDS) {
 			/* unmatched field, skip this line */
 			if (!(q = strstr(p, "\r\n"))) {
-				return http_send_status(fd, S_BAD_REQUEST);
+				return S_BAD_REQUEST;
 			}
 			p = q + (sizeof("\r\n") - 1);
 			continue;
@@ -263,7 +271,7 @@ http_get_request(int fd, struct request *req)
 
 		/* a single colon must follow the field name */
 		if (*p != ':') {
-			return http_send_status(fd, S_BAD_REQUEST);
+			return S_BAD_REQUEST;
 		}
 
 		/* skip whitespace */
@@ -272,13 +280,13 @@ http_get_request(int fd, struct request *req)
 
 		/* extract field content */
 		if (!(q = strstr(p, "\r\n"))) {
-			return http_send_status(fd, S_BAD_REQUEST);
+			return S_BAD_REQUEST;
 		}
-		*q = '\0';
 		if (q - p + 1 > FIELD_MAX) {
-			return http_send_status(fd, S_REQUEST_TOO_LARGE);
+			return S_REQUEST_TOO_LARGE;
 		}
-		memcpy(req->field[i], p, q - p + 1);
+		memcpy(req->field[i], p, q - p);
+		req->field[i][q - p] = '\0';
 
 		/* go to next line */
 		p = q + (sizeof("\r\n") - 1);
@@ -288,37 +296,37 @@ http_get_request(int fd, struct request *req)
 	 * clean up host
 	 */
 
-	p = strrchr(req->field[REQ_HOST], ':');
-	q = strrchr(req->field[REQ_HOST], ']');
+	m = strrchr(req->field[REQ_HOST], ':');
+	n = strrchr(req->field[REQ_HOST], ']');
 
 	/* strip port suffix but don't interfere with IPv6 bracket notation
 	 * as per RFC 2732 */
-	if (p && (!q || p > q)) {
+	if (m && (!n || m > n)) {
 		/* port suffix must not be empty */
-		if (*(p + 1) == '\0') {
-			return http_send_status(fd, S_BAD_REQUEST);
+		if (*(m + 1) == '\0') {
+			return S_BAD_REQUEST;
 		}
-		*p = '\0';
+		*m = '\0';
 	}
 
 	/* strip the brackets from the IPv6 notation and validate the address */
-	if (q) {
+	if (n) {
 		/* brackets must be on the outside */
-		if (req->field[REQ_HOST][0] != '[' || *(q + 1) != '\0') {
-			return http_send_status(fd, S_BAD_REQUEST);
+		if (req->field[REQ_HOST][0] != '[' || *(n + 1) != '\0') {
+			return S_BAD_REQUEST;
 		}
 
 		/* remove the right bracket */
-		*q = '\0';
-		p = req->field[REQ_HOST] + 1;
+		*n = '\0';
+		m = req->field[REQ_HOST] + 1;
 
 		/* validate the contained IPv6 address */
-		if (inet_pton(AF_INET6, p, &addr) != 1) {
-			return http_send_status(fd, S_BAD_REQUEST);
+		if (inet_pton(AF_INET6, m, &addr) != 1) {
+			return S_BAD_REQUEST;
 		}
 
 		/* copy it into the host field */
-		memmove(req->field[REQ_HOST], p, q - p + 1);
+		memmove(req->field[REQ_HOST], m, n - m + 1);
 	}
 
 	return 0;

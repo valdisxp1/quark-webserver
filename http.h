@@ -104,7 +104,8 @@ struct connection {
 
 enum status http_send_header(int, const struct response *);
 enum status http_send_status(int, enum status);
-int http_get_request(int fd, struct request *);
+enum status http_recv_header(int, char *, size_t, size_t *);
+enum status http_parse_header(const char *, struct request *);
 enum status http_send_response(int fd, const struct request *,
                                const struct server *);
 
