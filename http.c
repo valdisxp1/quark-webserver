@@ -144,7 +144,7 @@ decode(const char src[PATH_MAX], char dest[PATH_MAX])
 }
 
 int
-http_get_request(struct request *req)
+http_get_request(int fd, struct request *req)
 {
 	struct in6_addr addr;
 	size_t hlen, i, mlen;
@@ -158,8 +158,8 @@ http_get_request(struct request *req)
 	 * receive header
 	 */
 	for (hlen = 0; ;) {
-		if ((off = read(req->fd, h + hlen, sizeof(h) - hlen)) < 0) {
-			return http_send_status(req->fd, S_REQUEST_TIMEOUT);
+		if ((off = read(fd, h + hlen, sizeof(h) - hlen)) < 0) {
+			return http_send_status(fd, S_REQUEST_TIMEOUT);
 		} else if (off == 0) {
 			break;
 		}
@@ -168,13 +168,13 @@ http_get_request(struct request *req)
 			break;
 		}
 		if (hlen == sizeof(h)) {
-			return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
 	}
 
 	/* remove terminating empty line */
 	if (hlen < 2) {
-		return http_send_status(req->fd, S_BAD_REQUEST);
+		return http_send_status(fd, S_BAD_REQUEST);
 	}
 	hlen -= 2;
 
@@ -194,12 +194,12 @@ http_get_request(struct request *req)
 		}
 	}
 	if (i == NUM_REQ_METHODS) {
-		return http_send_status(req->fd, S_METHOD_NOT_ALLOWED);
+		return http_send_status(fd, S_METHOD_NOT_ALLOWED);
 	}
 
 	/* a single space must follow the method */
 	if (h[mlen] != ' ') {
-		return http_send_status(req->fd, S_BAD_REQUEST);
+		return http_send_status(fd, S_BAD_REQUEST);
 	}
 
 	/* basis for next step */
@@ -207,11 +207,11 @@ http_get_request(struct request *req)
 
 	/* TARGET */
 	if (!(q = strchr(p, ' '))) {
-		return http_send_status(req->fd, S_BAD_REQUEST);
+		return http_send_status(fd, S_BAD_REQUEST);
 	}
 	*q = '\0';
 	if (q - p + 1 > PATH_MAX) {
-		return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+		return http_send_status(fd, S_REQUEST_TOO_LARGE);
 	}
 	memcpy(req->target, p, q - p + 1);
 	decode(req->target, req->target);
@@ -221,18 +221,18 @@ http_get_request(struct request *req)
 
 	/* HTTP-VERSION */
 	if (strncmp(p, "HTTP/", sizeof("HTTP/") - 1)) {
-		return http_send_status(req->fd, S_BAD_REQUEST);
+		return http_send_status(fd, S_BAD_REQUEST);
 	}
 	p += sizeof("HTTP/") - 1;
 	if (strncmp(p, "1.0", sizeof("1.0") - 1) &&
 	    strncmp(p, "1.1", sizeof("1.1") - 1)) {
-		return http_send_status(req->fd, S_VERSION_NOT_SUPPORTED);
+		return http_send_status(fd, S_VERSION_NOT_SUPPORTED);
 	}
 	p += sizeof("1.*") - 1;
 
 	/* check terminator */
 	if (strncmp(p, "\r\n", sizeof("\r\n") - 1)) {
-		return http_send_status(req->fd, S_BAD_REQUEST);
+		return http_send_status(fd, S_BAD_REQUEST);
 	}
 
 	/* basis for next step */
@@ -253,7 +253,7 @@ http_get_request(struct request *req)
 		if (i == NUM_REQ_FIELDS) {
 			/* unmatched field, skip this line */
 			if (!(q = strstr(p, "\r\n"))) {
-				return http_send_status(req->fd, S_BAD_REQUEST);
+				return http_send_status(fd, S_BAD_REQUEST);
 			}
 			p = q + (sizeof("\r\n") - 1);
 			continue;
@@ -263,7 +263,7 @@ http_get_request(struct request *req)
 
 		/* a single colon must follow the field name */
 		if (*p != ':') {
-			return http_send_status(req->fd, S_BAD_REQUEST);
+			return http_send_status(fd, S_BAD_REQUEST);
 		}
 
 		/* skip whitespace */
@@ -272,11 +272,11 @@ http_get_request(struct request *req)
 
 		/* extract field content */
 		if (!(q = strstr(p, "\r\n"))) {
-			return http_send_status(req->fd, S_BAD_REQUEST);
+			return http_send_status(fd, S_BAD_REQUEST);
 		}
 		*q = '\0';
 		if (q - p + 1 > FIELD_MAX) {
-			return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
 		memcpy(req->field[i], p, q - p + 1);
 
@@ -296,7 +296,7 @@ http_get_request(struct request *req)
 	if (p && (!q || p > q)) {
 		/* port suffix must not be empty */
 		if (*(p + 1) == '\0') {
-			return http_send_status(req->fd, S_BAD_REQUEST);
+			return http_send_status(fd, S_BAD_REQUEST);
 		}
 		*p = '\0';
 	}
@@ -305,7 +305,7 @@ http_get_request(struct request *req)
 	if (q) {
 		/* brackets must be on the outside */
 		if (req->field[REQ_HOST][0] != '[' || *(q + 1) != '\0') {
-			return http_send_status(req->fd, S_BAD_REQUEST);
+			return http_send_status(fd, S_BAD_REQUEST);
 		}
 
 		/* remove the right bracket */
@@ -314,7 +314,7 @@ http_get_request(struct request *req)
 
 		/* validate the contained IPv6 address */
 		if (inet_pton(AF_INET6, p, &addr) != 1) {
-			return http_send_status(req->fd, S_BAD_REQUEST);
+			return http_send_status(fd, S_BAD_REQUEST);
 		}
 
 		/* copy it into the host field */
@@ -528,7 +528,7 @@ parse_range(const char *str, size_t size, size_t *lower, size_t *upper)
 #define RELPATH(x) ((!*(x) || !strcmp(x, "/")) ? "." : ((x) + 1))
 
 enum status
-http_send_response(const struct request *req, const struct server *s)
+http_send_response(int fd, const struct request *req, const struct server *s)
 {
 	enum status returnstatus;
 	struct in6_addr addr;
@@ -553,7 +553,7 @@ http_send_response(const struct request *req, const struct server *s)
 			if (!regexec(&(s->vhost[i].re), req->field[REQ_HOST], 0,
 			             NULL, 0)) {
 				if (chdir(s->vhost[i].dir) < 0) {
-					return http_send_status(req->fd, (errno == EACCES) ?
+					return http_send_status(fd, (errno == EACCES) ?
 					                        S_FORBIDDEN : S_NOT_FOUND);
 				}
 				vhostmatch = s->vhost[i].chost;
@@ -561,14 +561,14 @@ http_send_response(const struct request *req, const struct server *s)
 			}
 		}
 		if (i == s->vhost_len) {
-			return http_send_status(req->fd, S_NOT_FOUND);
+			return http_send_status(fd, S_NOT_FOUND);
 		}
 
 		/* if we have a vhost prefix, prepend it to the target */
 		if (s->vhost[i].prefix) {
 			if (esnprintf(tmptarget, sizeof(tmptarget), "%s%s",
 			              s->vhost[i].prefix, realtarget)) {
-				return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 			memcpy(realtarget, tmptarget, sizeof(realtarget));
 		}
@@ -588,7 +588,7 @@ http_send_response(const struct request *req, const struct server *s)
 			/* swap out target prefix */
 			if (esnprintf(tmptarget, sizeof(tmptarget), "%s%s",
 			              s->map[i].to, realtarget + len)) {
-				return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 			memcpy(realtarget, tmptarget, sizeof(realtarget));
 			break;
@@ -597,12 +597,12 @@ http_send_response(const struct request *req, const struct server *s)
 
 	/* normalize target */
 	if (normabspath(realtarget)) {
-		return http_send_status(req->fd, S_BAD_REQUEST);
+		return http_send_status(fd, S_BAD_REQUEST);
 	}
 
 	/* stat the target */
 	if (stat(RELPATH(realtarget), &st) < 0) {
-		return http_send_status(req->fd, (errno == EACCES) ?
+		return http_send_status(fd, (errno == EACCES) ?
 		                        S_FORBIDDEN : S_NOT_FOUND);
 	}
 
@@ -610,7 +610,7 @@ http_send_response(const struct request *req, const struct server *s)
 		/* add / to target if not present */
 		len = strlen(realtarget);
 		if (len >= PATH_MAX - 2) {
-			return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
 		if (len && realtarget[len - 1] != '/') {
 			realtarget[len] = '/';
@@ -624,7 +624,7 @@ http_send_response(const struct request *req, const struct server *s)
 	 */
 	if (strstr(realtarget, "/.") && strncmp(realtarget,
 	    "/.well-known/", sizeof("/.well-known/") - 1)) {
-		return http_send_status(req->fd, S_FORBIDDEN);
+		return http_send_status(fd, S_FORBIDDEN);
 	}
 
 	/* redirect if targets differ, host is non-canonical or we prefixed */
@@ -650,7 +650,7 @@ http_send_response(const struct request *req, const struct server *s)
 			 * honor that later when we fill the "Location"-field */
 			if ((ipv6host = inet_pton(AF_INET6, targethost,
 			                          &addr)) < 0) {
-				return http_send_status(req->fd,
+				return http_send_status(fd,
 				                        S_INTERNAL_SERVER_ERROR);
 			}
 
@@ -662,25 +662,25 @@ http_send_response(const struct request *req, const struct server *s)
 			              targethost,
 			              ipv6host ? "]" : "", hasport ? ":" : "",
 			              hasport ? s->port : "", tmptarget)) {
-				return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 		} else {
 			/* write relative redirection URL to response struct */
 			if (esnprintf(res.field[RES_LOCATION],
 			              sizeof(res.field[RES_LOCATION]),
 			              tmptarget)) {
-				return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+				return http_send_status(fd, S_REQUEST_TOO_LARGE);
 			}
 		}
 
-		return http_send_header(req->fd, &res);
+		return http_send_header(fd, &res);
 	}
 
 	if (S_ISDIR(st.st_mode)) {
 		/* append docindex to target */
 		if (esnprintf(realtarget, sizeof(realtarget), "%s%s",
 		              req->target, s->docindex)) {
-			return http_send_status(req->fd, S_REQUEST_TOO_LARGE);
+			return http_send_status(fd, S_REQUEST_TOO_LARGE);
 		}
 
 		/* stat the docindex, which must be a regular file */
@@ -689,13 +689,13 @@ http_send_response(const struct request *req, const struct server *s)
 				/* remove index suffix and serve dir */
 				realtarget[strlen(realtarget) -
 				           strlen(s->docindex)] = '\0';
-				return resp_dir(req->fd, RELPATH(realtarget), req);
+				return resp_dir(fd, RELPATH(realtarget), req);
 			} else {
 				/* reject */
 				if (!S_ISREG(st.st_mode) || errno == EACCES) {
-					return http_send_status(req->fd, S_FORBIDDEN);
+					return http_send_status(fd, S_FORBIDDEN);
 				} else {
-					return http_send_status(req->fd, S_NOT_FOUND);
+					return http_send_status(fd, S_NOT_FOUND);
 				}
 			}
 		}
@@ -706,13 +706,13 @@ http_send_response(const struct request *req, const struct server *s)
 		/* parse field */
 		if (!strptime(req->field[REQ_IF_MODIFIED_SINCE],
 		              "%a, %d %b %Y %T GMT", &tm)) {
-			return http_send_status(req->fd, S_BAD_REQUEST);
+			return http_send_status(fd, S_BAD_REQUEST);
 		}
 
 		/* compare with last modification date of the file */
 		if (difftime(st.st_mtim.tv_sec, timegm(&tm)) <= 0) {
 			res.status = S_NOT_MODIFIED;
-			return http_send_header(req->fd, &res);
+			return http_send_header(fd, &res);
 		}
 	}
 
@@ -725,13 +725,13 @@ http_send_response(const struct request *req, const struct server *s)
 			if (esnprintf(res.field[RES_CONTENT_RANGE],
 			              sizeof(res.field[RES_CONTENT_RANGE]),
 			              "bytes */%zu", st.st_size)) {
-				return http_send_status(req->fd,
+				return http_send_status(fd,
 				                        S_INTERNAL_SERVER_ERROR);
 			}
 
-			return http_send_header(req->fd, &res);
+			return http_send_header(fd, &res);
 		} else {
-			return http_send_status(req->fd, returnstatus);
+			return http_send_status(fd, returnstatus);
 		}
 	}
 
@@ -746,5 +746,5 @@ http_send_response(const struct request *req, const struct server *s)
 		}
 	}
 
-	return resp_file(req->fd, RELPATH(realtarget), req, &st, mime, lower, upper);
+	return resp_file(fd, RELPATH(realtarget), req, &st, mime, lower, upper);
 }

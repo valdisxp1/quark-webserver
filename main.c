@@ -25,22 +25,20 @@ static char *udsname;
 static void
 serve(int infd, const struct sockaddr_storage *in_sa, const struct server *s)
 {
-	struct request req;
+	struct connection c = { .fd = infd };
 	time_t t;
 	enum status status;
 	char inaddr[INET6_ADDRSTRLEN /* > INET_ADDRSTRLEN */];
 	char tstmp[21];
 
 	/* set connection timeout */
-	if (sock_set_timeout(infd, 30)) {
+	if (sock_set_timeout(c.fd, 30)) {
 		goto cleanup;
 	}
 
 	/* handle request */
-	req.fd = infd;
-
-	if (!(status = http_get_request(&req))) {
-		status = http_send_response(&req, s);
+	if (!(status = http_get_request(c.fd, &c.req))) {
+		status = http_send_response(c.fd, &c.req, s);
 	}
 
 	/* write output to log */
@@ -54,12 +52,12 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *s)
 		goto cleanup;
 	}
 	printf("%s\t%s\t%d\t%s\t%s\n", tstmp, inaddr, status,
-	       req.field[REQ_HOST], req.target);
+	       c.req.field[REQ_HOST], c.req.target);
 cleanup:
 	/* clean up and finish */
-	shutdown(infd, SHUT_RD);
-	shutdown(infd, SHUT_WR);
-	close(infd);
+	shutdown(c.fd, SHUT_RD);
+	shutdown(c.fd, SHUT_WR);
+	close(c.fd);
 }
 
 static void

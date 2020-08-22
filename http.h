@@ -3,6 +3,7 @@
 #define HTTP_H
 
 #include <limits.h>
+#include <sys/stat.h>
 
 #include "util.h"
 
@@ -27,8 +28,8 @@ enum req_method {
 extern const char *req_method_str[];
 
 struct request {
-	int fd;
-	char header[HEADER_MAX];
+	char header[HEADER_MAX]; /* deprecated */ 
+
 	enum req_method method;
 	char target[PATH_MAX];
 	char field[NUM_REQ_FIELDS][FIELD_MAX];
@@ -65,15 +66,46 @@ enum res_field {
 
 extern const char *res_field_str[];
 
+enum res_type {
+	RESTYPE_FILE,
+	RESTYPE_DIR,
+	NUM_RES_TYPES,
+};
+
 struct response {
+	enum res_type type;
 	enum status status;
 	char field[NUM_RES_FIELDS][FIELD_MAX];
+	char path[PATH_MAX];
+	struct stat st;
+	struct {
+		char *mime;
+		size_t lower;
+		size_t upper;
+	} file;
+};
+
+enum conn_state {
+	C_VACANT,
+	C_RECV_HEADER,
+	C_SEND_HEADER,
+	C_SEND_DATA,
+	NUM_CONN_STATES,
+};
+
+struct connection {
+	enum conn_state state;
+	int fd;
+	char header[HEADER_MAX]; /* general req/res-header buffer */
+	size_t off;              /* general offset (header/file/dir) */
+	struct request req;
+	struct response res;
 };
 
 enum status http_send_header(int, const struct response *);
 enum status http_send_status(int, enum status);
-int http_get_request(struct request *);
-enum status http_send_response(const struct request *,
+int http_get_request(int fd, struct request *);
+enum status http_send_response(int fd, const struct request *,
                                const struct server *);
 
 #endif /* HTTP_H */
