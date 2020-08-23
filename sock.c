@@ -63,7 +63,7 @@ void
 sock_rem_uds(const char *udsname)
 {
 	if (unlink(udsname) < 0) {
-		die("unlink:");
+		die("unlink '%s':", udsname);
 	}
 }
 
@@ -74,7 +74,8 @@ sock_get_uds(const char *udsname, uid_t uid, gid_t gid)
 		.sun_family = AF_UNIX,
 	};
 	size_t udsnamelen;
-	int insock, sockmode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH;
+	int insock, sockmode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP |
+	                       S_IROTH | S_IWOTH;
 
 	if ((insock = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
 		die("socket:");
@@ -86,7 +87,7 @@ sock_get_uds(const char *udsname, uid_t uid, gid_t gid)
 	memcpy(addr.sun_path, udsname, udsnamelen + 1);
 
 	if (bind(insock, (const struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		die("bind %s:", udsname);
+		die("bind '%s':", udsname);
 	}
 
 	if (listen(insock, SOMAXCONN) < 0) {
@@ -96,12 +97,12 @@ sock_get_uds(const char *udsname, uid_t uid, gid_t gid)
 
 	if (chmod(udsname, sockmode) < 0) {
 		sock_rem_uds(udsname);
-		die("chmod:");
+		die("chmod '%s':", udsname);
 	}
 
 	if (chown(udsname, uid, gid) < 0) {
 		sock_rem_uds(udsname);
-		die("chown:");
+		die("chown '%s':", udsname);
 	}
 
 	return insock;
