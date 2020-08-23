@@ -549,7 +549,7 @@ parse_range(const char *str, size_t size, size_t *lower, size_t *upper)
 
 enum status
 http_prepare_response(const struct request *req, struct response *res,
-                      const struct server *s)
+                      const struct server *srv)
 {
 	enum status returnstatus;
 	struct in6_addr addr;
@@ -573,16 +573,16 @@ http_prepare_response(const struct request *req, struct response *res,
 
 	/* match vhost */
 	vhost = NULL;
-	if (s->vhost) {
-		for (i = 0; i < s->vhost_len; i++) {
-			if (!regexec(&(s->vhost[i].re), req->field[REQ_HOST],
+	if (srv->vhost) {
+		for (i = 0; i < srv->vhost_len; i++) {
+			if (!regexec(&(srv->vhost[i].re), req->field[REQ_HOST],
 			             0, NULL, 0)) {
 				/* we have a matching vhost */
-				vhost = &(s->vhost[i]);
+				vhost = &(srv->vhost[i]);
 				break;
 			}
 		}
-		if (i == s->vhost_len) {
+		if (i == srv->vhost_len) {
 			return S_NOT_FOUND;
 		}
 
@@ -594,19 +594,19 @@ http_prepare_response(const struct request *req, struct response *res,
 	}
 
 	/* apply URI prefix mapping */
-	for (i = 0; i < s->map_len; i++) {
-		len = strlen(s->map[i].from);
-		if (!strncmp(realuri, s->map[i].from, len)) {
+	for (i = 0; i < srv->map_len; i++) {
+		len = strlen(srv->map[i].from);
+		if (!strncmp(realuri, srv->map[i].from, len)) {
 			/* match canonical host if vhosts are enabled and
 			 * the mapping specifies a canonical host */
-			if (s->vhost && s->map[i].chost &&
-			    strcmp(s->map[i].chost, vhost->chost)) {
+			if (srv->vhost && srv->map[i].chost &&
+			    strcmp(srv->map[i].chost, vhost->chost)) {
 				continue;
 			}
 
 			/* swap out URI prefix */
 			memmove(realuri, realuri + len, strlen(realuri) + 1);
-			if (prepend(realuri, LEN(realuri), s->map[i].to)) {
+			if (prepend(realuri, LEN(realuri), srv->map[i].to)) {
 				return S_REQUEST_TOO_LARGE;
 			}
 			break;
@@ -648,7 +648,7 @@ http_prepare_response(const struct request *req, struct response *res,
 	 * redirect if the original URI and the "real" URI differ or if
 	 * the requested host is non-canonical
 	 */
-	if (strcmp(req->uri, realuri) || (s->vhost && vhost &&
+	if (strcmp(req->uri, realuri) || (srv->vhost && vhost &&
 	    strcmp(req->field[REQ_HOST], vhost->chost))) {
 		res->status = S_MOVED_PERMANENTLY;
 
@@ -656,14 +656,14 @@ http_prepare_response(const struct request *req, struct response *res,
 		encode(realuri, tmpuri);
 
 		/* determine target location */
-		if (s->vhost) {
+		if (srv->vhost) {
 			/* absolute redirection URL */
 			targethost = req->field[REQ_HOST][0] ? vhost->chost ?
-			             vhost->chost : req->field[REQ_HOST] : s->host ?
-			             s->host : "localhost";
+			             vhost->chost : req->field[REQ_HOST] :
+				     srv->host ? srv->host : "localhost";
 
 			/* do we need to add a port to the Location? */
-			hasport = s->port && strcmp(s->port, "80");
+			hasport = srv->port && strcmp(srv->port, "80");
 
 			/* RFC 2732 specifies to use brackets for IPv6-addresses
 			 * in URLs, so we need to check if our host is one and
@@ -680,7 +680,7 @@ http_prepare_response(const struct request *req, struct response *res,
 			              ipv6host ? "[" : "",
 			              targethost,
 			              ipv6host ? "]" : "", hasport ? ":" : "",
-			              hasport ? s->port : "", tmpuri)) {
+			              hasport ? srv->port : "", tmpuri)) {
 				return S_REQUEST_TOO_LARGE;
 			}
 		} else {
@@ -715,13 +715,13 @@ http_prepare_response(const struct request *req, struct response *res,
 		 * the URI
 		 */
 		if (esnprintf(tmpuri, sizeof(tmpuri), "%s%s",
-		              req->uri, s->docindex)) {
+		              req->uri, srv->docindex)) {
 			return S_REQUEST_TOO_LARGE;
 		}
 
 		/* stat the docindex, which must be a regular file */
 		if (stat(RELPATH(tmpuri), &st) < 0 || !S_ISREG(st.st_mode)) {
-			if (s->listdirs) {
+			if (srv->listdirs) {
 				/* serve directory listing */
 				res->type = RESTYPE_DIRLISTING;
 				res->status = (access(res->path, R_OK)) ?

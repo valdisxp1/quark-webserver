@@ -24,7 +24,7 @@
 static char *udsname;
 
 static void
-serve(int infd, const struct sockaddr_storage *in_sa, const struct server *s)
+serve(int infd, const struct sockaddr_storage *in_sa, const struct server *srv)
 {
 	struct connection c = { .fd = infd };
 	time_t t;
@@ -40,7 +40,7 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *s)
 	/* handle request */
 	if ((status = http_recv_header(c.fd, c.header, LEN(c.header), &c.off)) ||
 	    (status = http_parse_header(c.header, &c.req)) ||
-	    (status = http_prepare_response(&c.req, &c.res, s))) {
+	    (status = http_prepare_response(&c.req, &c.res, srv))) {
 		status = http_send_status(c.fd, status);
 	} else {
 		status = http_send_header(c.fd, &c.res);
@@ -189,7 +189,7 @@ main(int argc, char *argv[])
 	struct group *grp = NULL;
 	struct passwd *pwd = NULL;
 	struct rlimit rlim;
-	struct server s = {
+	struct server srv = {
 		.docindex = "index.html",
 	};
 	struct sockaddr_storage in_sa;
@@ -213,28 +213,28 @@ main(int argc, char *argv[])
 		group = EARGF(usage());
 		break;
 	case 'h':
-		s.host = EARGF(usage());
+		srv.host = EARGF(usage());
 		break;
 	case 'i':
-		s.docindex = EARGF(usage());
-		if (strchr(s.docindex, '/')) {
+		srv.docindex = EARGF(usage());
+		if (strchr(srv.docindex, '/')) {
 			die("The document index must not contain '/'");
 		}
 		break;
 	case 'l':
-		s.listdirs = 1;
+		srv.listdirs = 1;
 		break;
 	case 'm':
 		if (spacetok(EARGF(usage()), tok, 3) || !tok[0] || !tok[1]) {
 			usage();
 		}
-		if (!(s.map = reallocarray(s.map, ++s.map_len,
+		if (!(srv.map = reallocarray(srv.map, ++srv.map_len,
 		                           sizeof(struct map)))) {
 			die("reallocarray:");
 		}
-		s.map[s.map_len - 1].from  = tok[0];
-		s.map[s.map_len - 1].to    = tok[1];
-		s.map[s.map_len - 1].chost = tok[2];
+		srv.map[srv.map_len - 1].from  = tok[0];
+		srv.map[srv.map_len - 1].to    = tok[1];
+		srv.map[srv.map_len - 1].chost = tok[2];
 		break;
 	case 'n':
 		maxnprocs = strtonum(EARGF(usage()), 1, INT_MAX, &err);
@@ -243,7 +243,7 @@ main(int argc, char *argv[])
 		}
 		break;
 	case 'p':
-		s.port = EARGF(usage());
+		srv.port = EARGF(usage());
 		break;
 	case 'U':
 		udsname = EARGF(usage());
@@ -256,14 +256,14 @@ main(int argc, char *argv[])
 		    !tok[2]) {
 			usage();
 		}
-		if (!(s.vhost = reallocarray(s.vhost, ++s.vhost_len,
-		                             sizeof(struct vhost)))) {
+		if (!(srv.vhost = reallocarray(srv.vhost, ++srv.vhost_len,
+		                               sizeof(*srv.vhost)))) {
 			die("reallocarray:");
 		}
-		s.vhost[s.vhost_len - 1].chost  = tok[0];
-		s.vhost[s.vhost_len - 1].regex  = tok[1];
-		s.vhost[s.vhost_len - 1].dir    = tok[2];
-		s.vhost[s.vhost_len - 1].prefix = tok[3];
+		srv.vhost[srv.vhost_len - 1].chost  = tok[0];
+		srv.vhost[srv.vhost_len - 1].regex  = tok[1];
+		srv.vhost[srv.vhost_len - 1].dir    = tok[2];
+		srv.vhost[srv.vhost_len - 1].prefix = tok[3];
 		break;
 	default:
 		usage();
@@ -274,7 +274,7 @@ main(int argc, char *argv[])
 	}
 
 	/* can't have both host and UDS but must have one of port or UDS*/
-	if ((s.host && udsname) || !(s.port || udsname)) {
+	if ((srv.host && udsname) || !(srv.port || udsname)) {
 		usage();
 	}
 
@@ -284,11 +284,11 @@ main(int argc, char *argv[])
 	}
 
 	/* compile and check the supplied vhost regexes */
-	for (i = 0; i < s.vhost_len; i++) {
-		if (regcomp(&s.vhost[i].re, s.vhost[i].regex,
+	for (i = 0; i < srv.vhost_len; i++) {
+		if (regcomp(&srv.vhost[i].re, srv.vhost[i].regex,
 		            REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
 			die("regcomp '%s': invalid regex",
-			    s.vhost[i].regex);
+			    srv.vhost[i].regex);
 		}
 	}
 
@@ -317,7 +317,7 @@ main(int argc, char *argv[])
 
 	/* bind socket */
 	insock = udsname ? sock_get_uds(udsname, pwd->pw_uid, grp->gr_gid) :
-	                   sock_get_ips(s.host, s.port);
+	                   sock_get_ips(srv.host, srv.port);
 
 	switch (fork()) {
 	case -1:
@@ -380,7 +380,7 @@ main(int argc, char *argv[])
 			/* fork and handle */
 			switch (fork()) {
 			case 0:
-				serve(infd, &in_sa, &s);
+				serve(infd, &in_sa, &srv);
 				exit(0);
 				break;
 			case -1:
