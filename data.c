@@ -39,7 +39,7 @@ suffix(int t)
 }
 
 enum status
-resp_dir(int fd, const struct response *res)
+data_send_dirlisting(int fd, const struct response *res)
 {
 	enum status ret;
 	struct dirent **e;
@@ -87,7 +87,7 @@ cleanup:
 }
 
 enum status
-resp_file(int fd, const struct response *res)
+data_send_file(int fd, const struct response *res)
 {
 	FILE *fp;
 	enum status ret = 0;

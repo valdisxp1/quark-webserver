@@ -50,9 +50,9 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *srv)
 	} else {
 		/* send data */
 		if (c.res.type == RESTYPE_FILE) {
-			resp_file(c.fd, &c.res);
+			data_send_file(c.fd, &c.res);
 		} else if (c.res.type == RESTYPE_DIRLISTING) {
-			resp_dir(c.fd, &c.res);
+			data_send_dirlisting(c.fd, &c.res);
 		}
 	}
 

@@ -1,13 +1,10 @@
 /* See LICENSE file for copyright and license details. */
-#ifndef RESP_H
-#define RESP_H
-
-#include <sys/stat.h>
-#include <sys/types.h>
+#ifndef DATA_H
+#define DATA_H
 
 #include "http.h"
 
-enum status resp_dir(int, const struct response *);
-enum status resp_file(int, const struct response *);
+enum status data_send_dirlisting(int, const struct response *);
+enum status data_send_file(int, const struct response *);
 
-#endif /* RESP_H */
+#endif /* DATA_H */
