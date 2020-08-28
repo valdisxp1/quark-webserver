@@ -4,15 +4,15 @@
 
 include config.mk
 
-COMPONENTS = util sock http resp
+COMPONENTS = data http sock util
 
 all: quark
 
-util.o: util.c util.h config.mk
-sock.o: sock.c sock.h util.h config.mk
-http.o: http.c http.h util.h http.h resp.h config.h config.mk
-resp.o: resp.c resp.h util.h http.h config.mk
+data.o: data.c data.h util.h http.h config.mk
+http.o: http.c http.h util.h http.h data.h config.h config.mk
 main.o: main.c util.h sock.h http.h arg.h config.h config.mk
+sock.o: sock.c sock.h util.h config.mk
+util.o: util.c util.h config.mk
 
 quark: $(COMPONENTS:=.o) $(COMPONENTS:=.h) main.o config.mk
 	$(CC) -o $@ $(CPPFLAGS) $(CFLAGS) $(COMPONENTS:=.o) main.o $(LDFLAGS)

@@ -18,7 +18,6 @@
 
 #include "config.h"
 #include "http.h"
-#include "resp.h"
 #include "util.h"
 
 const char *req_field_str[] = {
