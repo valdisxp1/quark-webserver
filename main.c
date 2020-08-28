@@ -28,7 +28,7 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *srv)
 {
 	struct connection c = { .fd = infd };
 	time_t t;
-	enum status status;
+	enum status s;
 	char inaddr[INET6_ADDRSTRLEN /* > INET_ADDRSTRLEN */];
 	char tstmp[21];
 
@@ -38,15 +38,15 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *srv)
 	}
 
 	/* handle request */
-	if ((status = http_recv_header(c.fd, c.header, LEN(c.header), &c.off)) ||
-	    (status = http_parse_header(c.header, &c.req))) {
-		http_prepare_error_response(&c.req, &c.res, status);
+	if ((s = http_recv_header(c.fd, c.header, LEN(c.header), &c.off)) ||
+	    (s = http_parse_header(c.header, &c.req))) {
+		http_prepare_error_response(&c.req, &c.res, s);
 	} else {
 		http_prepare_response(&c.req, &c.res, srv);
 	}
 
-	if ((status = http_send_header(c.fd, &c.res))) {
-		c.res.status = status;
+	if ((s = http_send_header(c.fd, &c.res))) {
+		c.res.status = s;
 	} else {
 		/* send data */
 		if (c.res.type == RESTYPE_FILE) {
