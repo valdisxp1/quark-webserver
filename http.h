@@ -105,5 +105,7 @@ enum status http_recv_header(int, char *, size_t, size_t *);
 enum status http_parse_header(const char *, struct request *);
 enum status http_prepare_response(const struct request *, struct response *,
                                   const struct server *);
+void http_prepare_error_response(const struct request *,
+                                 struct response *, enum status);
 
 #endif /* HTTP_H */

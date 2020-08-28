@@ -99,42 +99,18 @@ http_send_header(int fd, const struct response *res)
 		            esc) < 0) {
 			return S_REQUEST_TIMEOUT;
 		}
-	}
-
-	return res->status;
-}
-
-enum status
-http_send_status(int fd, enum status s)
-{
-	enum status sendstatus;
-
-	struct response res = {
-		.status                  = s,
-		.field[RES_CONTENT_TYPE] = "text/html; charset=utf-8",
-	};
-
-	if (s == S_METHOD_NOT_ALLOWED) {
-		if (esnprintf(res.field[RES_ALLOW],
-		              sizeof(res.field[RES_ALLOW]), "%s",
-			      "Allow: GET, HEAD")) {
-			return S_INTERNAL_SERVER_ERROR;
+	} else if (res->type == RESTYPE_ERROR) {
+		if (dprintf(fd,
+		            "<!DOCTYPE html>\n<html>\n\t<head>\n"
+		            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
+		            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>\n",
+		            res->status, status_str[res->status],
+			    res->status, status_str[res->status]) < 0) {
+			return S_REQUEST_TIMEOUT;
 		}
 	}
 
-	if ((sendstatus = http_send_header(fd, &res)) != s) {
-		return sendstatus;
-	}
-
-	if (dprintf(fd,
-	            "<!DOCTYPE html>\n<html>\n\t<head>\n"
-	            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
-	            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>\n",
-	            s, status_str[s], s, status_str[s]) < 0) {
-		return S_REQUEST_TIMEOUT;
-	}
-
-	return s;
+	return res->status;
 }
 
 static void
@@ -826,4 +802,32 @@ http_prepare_response(const struct request *req, struct response *res,
 	}
 
 	return 0;
+}
+
+void
+http_prepare_error_response(const struct request *req,
+                            struct response *res, enum status s)
+{
+	/* used later */
+	(void)req;
+
+	/* empty all response fields */
+	memset(res, 0, sizeof(*res));
+
+	res->type = RESTYPE_ERROR;
+	res->status = s;
+
+	if (esnprintf(res->field[RES_CONTENT_TYPE],
+	              sizeof(res->field[RES_CONTENT_TYPE]),
+	              "text/html; charset=utf-8")) {
+		res->status = S_INTERNAL_SERVER_ERROR;
+	}
+
+	if (res->status == S_METHOD_NOT_ALLOWED) {
+		if (esnprintf(res->field[RES_ALLOW],
+		              sizeof(res->field[RES_ALLOW]),
+			      "Allow: GET, HEAD")) {
+			res->status = S_INTERNAL_SERVER_ERROR;
+		}
+	}
 }
