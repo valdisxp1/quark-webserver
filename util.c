@@ -123,51 +123,6 @@ prepend(char *str, size_t size, const char *prefix)
 	return 0;
 }
 
-void
-html_escape(const char *src, char *dst, size_t dst_siz)
-{
-	const struct {
-		char c;
-		char *s;
-	} escape[] = {
-		{ '&',  "&amp;"  },
-		{ '<',  "&lt;"   },
-		{ '>',  "&gt;"   },
-		{ '"',  "&quot;" },
-		{ '\'', "&#x27;" },
-	};
-	size_t i, j, k, esclen;
-
-	for (i = 0, j = 0; src[i] != '\0'; i++) {
-		for (k = 0; k < LEN(escape); k++) {
-			if (src[i] == escape[k].c) {
-				break;
-			}
-		}
-		if (k == LEN(escape)) {
-			/* no escape char at src[i] */
-			if (j == dst_siz - 1) {
-				/* silent truncation */
-				break;
-			} else {
-				dst[j++] = src[i];
-			}
-		} else {
-			/* escape char at src[i] */
-			esclen = strlen(escape[k].s);
-
-			if (j >= dst_siz - esclen) {
-				/* silent truncation */
-				break;
-			} else {
-				memcpy(&dst[j], escape[k].s, esclen);
-				j += esclen;
-			}
-		}
-	}
-	dst[j] = '\0';
-}
-
 #define	INVALID  1
 #define	TOOSMALL 2
 #define	TOOLARGE 3

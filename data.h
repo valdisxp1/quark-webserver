@@ -5,6 +5,7 @@
 #include "http.h"
 
 enum status data_send_dirlisting(int, const struct response *);
+enum status data_send_error(int, const struct response *);
 enum status data_send_file(int, const struct response *);
 
 #endif /* DATA_H */

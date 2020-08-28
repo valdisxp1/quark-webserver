@@ -82,11 +82,13 @@ struct response {
 	} file;
 };
 
+extern enum status (* const body_fct[])(int, const struct response *);
+
 enum conn_state {
 	C_VACANT,
 	C_RECV_HEADER,
 	C_SEND_HEADER,
-	C_SEND_DATA,
+	C_SEND_BODY,
 	NUM_CONN_STATES,
 };
 
@@ -107,5 +109,7 @@ void http_prepare_response(const struct request *, struct response *,
                            const struct server *);
 void http_prepare_error_response(const struct request *,
                                  struct response *, enum status);
+enum status http_send_body(int, const struct response *,
+                           const struct request *);
 
 #endif /* HTTP_H */

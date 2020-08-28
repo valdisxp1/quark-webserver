@@ -52,7 +52,6 @@ void eunveil(const char *, const char *);
 int timestamp(char *, size_t, time_t);
 int esnprintf(char *, size_t, const char *, ...);
 int prepend(char *, size_t, const char *);
-void html_escape(const char *, char *, size_t);
 
 void *reallocarray(void *, size_t, size_t);
 long long strtonum(const char *, long long, long long, const char **);

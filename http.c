@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include "config.h"
+#include "data.h"
 #include "http.h"
 #include "util.h"
 
@@ -57,10 +58,16 @@ const char *res_field_str[] = {
 	[RES_CONTENT_TYPE]   = "Content-Type",
 };
 
+enum status (* const body_fct[])(int, const struct response *) = {
+	[RESTYPE_ERROR]      = data_send_error,
+	[RESTYPE_FILE]       = data_send_file,
+	[RESTYPE_DIRLISTING] = data_send_dirlisting,
+};
+
 enum status
 http_send_header(int fd, const struct response *res)
 {
-	char t[FIELD_MAX], esc[PATH_MAX];
+	char t[FIELD_MAX];
 	size_t i;
 
 	if (timestamp(t, sizeof(t), time(NULL))) {
@@ -86,27 +93,6 @@ http_send_header(int fd, const struct response *res)
 
 	if (dprintf(fd, "\r\n") < 0) {
 		return S_REQUEST_TIMEOUT;
-	}
-
-	/* listing header */
-	if (res->type == RESTYPE_DIRLISTING) {
-		html_escape(res->uri, esc, sizeof(esc));
-		if (dprintf(fd,
-		            "<!DOCTYPE html>\n<html>\n\t<head>"
-		            "<title>Index of %s</title></head>\n"
-		            "\t<body>\n\t\t<a href=\"..\">..</a>",
-		            esc) < 0) {
-			return S_REQUEST_TIMEOUT;
-		}
-	} else if (res->type == RESTYPE_ERROR) {
-		if (dprintf(fd,
-		            "<!DOCTYPE html>\n<html>\n\t<head>\n"
-		            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
-		            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>\n",
-		            res->status, status_str[res->status],
-			    res->status, status_str[res->status]) < 0) {
-			return S_REQUEST_TIMEOUT;
-		}
 	}
 
 	return 0;
@@ -853,4 +839,17 @@ http_prepare_error_response(const struct request *req,
 			res->status = S_INTERNAL_SERVER_ERROR;
 		}
 	}
+}
+
+enum status
+http_send_body(int fd, const struct response *res,
+               const struct request *req)
+{
+	enum status s;
+
+	if (req->method == M_GET && (s = body_fct[res->type](fd, res))) {
+		return s;
+	}
+
+	return 0;
 }

@@ -45,15 +45,9 @@ serve(int infd, const struct sockaddr_storage *in_sa, const struct server *srv)
 		http_prepare_response(&c.req, &c.res, srv);
 	}
 
-	if ((s = http_send_header(c.fd, &c.res))) {
+	if ((s = http_send_header(c.fd, &c.res)) ||
+	    (s = http_send_body(c.fd, &c.res, &c.req))) {
 		c.res.status = s;
-	} else {
-		/* send data */
-		if (c.res.type == RESTYPE_FILE) {
-			data_send_file(c.fd, &c.res);
-		} else if (c.res.type == RESTYPE_DIRLISTING) {
-			data_send_dirlisting(c.fd, &c.res);
-		}
 	}
 
 	/* write output to log */
