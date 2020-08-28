@@ -110,7 +110,7 @@ http_send_header(int fd, const struct response *res)
 		}
 	}
 
-	return res->status;
+	return 0;
 }
 
 static void
