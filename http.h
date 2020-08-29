@@ -3,6 +3,7 @@
 #define HTTP_H
 
 #include <limits.h>
+#include <sys/socket.h>
 
 #include "util.h"
 
@@ -95,6 +96,7 @@ enum conn_state {
 struct connection {
 	enum conn_state state;
 	int fd;
+	struct sockaddr_storage ia;
 	char header[HEADER_MAX]; /* general req/res-header buffer */
 	size_t off;              /* general offset (header/file/dir) */
 	struct request req;
