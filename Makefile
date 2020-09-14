@@ -14,7 +14,7 @@ main.o: main.c arg.h data.h http.h sock.h util.h config.mk
 sock.o: sock.c sock.h util.h config.mk
 util.o: util.c util.h config.mk
 
-quark: $(COMPONENTS:=.o) $(COMPONENTS:=.h) main.o config.mk
+quark: config.h $(COMPONENTS:=.o) $(COMPONENTS:=.h) main.o config.mk
 	$(CC) -o $@ $(CPPFLAGS) $(CFLAGS) $(COMPONENTS:=.o) main.o $(LDFLAGS)
 
 config.h:
