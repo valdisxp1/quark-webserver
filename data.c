@@ -94,7 +94,7 @@ enum status
 data_prepare_dirlisting_buf(const struct response *res,
                             struct buffer *buf, size_t *progress)
 {
-	enum status ret = 0;
+	enum status s = 0;
 	struct dirent **e;
 	size_t i;
 	int dirlen;
@@ -116,7 +116,7 @@ data_prepare_dirlisting_buf(const struct response *res,
 		                   "<title>Index of %s</title></head>\n"
 		                   "\t<body>\n\t\t<a href=\"..\">..</a>",
 		                   esc) < 0) {
-			ret = S_REQUEST_TIMEOUT;
+			s = S_REQUEST_TIMEOUT;
 			goto cleanup;
 		}
 	}
@@ -145,7 +145,7 @@ data_prepare_dirlisting_buf(const struct response *res,
 	if (*progress == (size_t)dirlen) {
 		/* listing footer */
 		if (buffer_appendf(buf, "\n\t</body>\n</html>\n") < 0) {
-			ret = S_REQUEST_TIMEOUT;
+			s = S_REQUEST_TIMEOUT;
 			goto cleanup;
 		}
 		(*progress)++;
@@ -157,7 +157,7 @@ cleanup:
 	}
 	free(e);
 
-	return ret;
+	return s;
 }
 
 enum status
@@ -189,7 +189,7 @@ data_prepare_file_buf(const struct response *res, struct buffer *buf,
                   size_t *progress)
 {
 	FILE *fp;
-	enum status ret = 0;
+	enum status s = 0;
 	ssize_t r;
 	size_t remaining;
 
@@ -198,13 +198,13 @@ data_prepare_file_buf(const struct response *res, struct buffer *buf,
 
 	/* open file */
 	if (!(fp = fopen(res->path, "r"))) {
-		ret = S_FORBIDDEN;
+		s = S_FORBIDDEN;
 		goto cleanup;
 	}
 
 	/* seek to lower bound + progress */
 	if (fseek(fp, res->file.lower + *progress, SEEK_SET)) {
-		ret = S_INTERNAL_SERVER_ERROR;
+		s = S_INTERNAL_SERVER_ERROR;
 		goto cleanup;
 	}
 
@@ -214,7 +214,7 @@ data_prepare_file_buf(const struct response *res, struct buffer *buf,
 	                  MIN(sizeof(buf->data) - buf->len,
 			  remaining), fp))) {
 		if (r < 0) {
-			ret = S_INTERNAL_SERVER_ERROR;
+			s = S_INTERNAL_SERVER_ERROR;
 			goto cleanup;
 		}
 		buf->len += r;
@@ -227,5 +227,5 @@ cleanup:
 		fclose(fp);
 	}
 
-	return ret;
+	return s;
 }
