@@ -7,9 +7,16 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "http.h"
 #include "data.h"
+#include "http.h"
 #include "util.h"
+
+enum status (* const data_fct[])(const struct response *,
+                                 struct buffer *, size_t *) = {
+	[RESTYPE_ERROR]      = data_prepare_error_buf,
+	[RESTYPE_FILE]       = data_prepare_file_buf,
+	[RESTYPE_DIRLISTING] = data_prepare_dirlisting_buf,
+};
 
 static int
 compareent(const struct dirent **d1, const struct dirent **d2)
@@ -84,7 +91,8 @@ html_escape(const char *src, char *dst, size_t dst_siz)
 }
 
 enum status
-data_send_dirlisting(int fd, const struct response *res)
+data_prepare_dirlisting_buf(const struct response *res,
+                            struct buffer *buf, size_t *progress)
 {
 	enum status ret = 0;
 	struct dirent **e;
@@ -92,24 +100,29 @@ data_send_dirlisting(int fd, const struct response *res)
 	int dirlen;
 	char esc[PATH_MAX /* > NAME_MAX */ * 6]; /* strlen("&...;") <= 6 */
 
+	/* reset buffer */
+	memset(buf, 0, sizeof(*buf));
+
 	/* read directory */
 	if ((dirlen = scandir(res->path, &e, NULL, compareent)) < 0) {
 		return S_FORBIDDEN;
 	}
 
-	/* listing header (we use esc because sizeof(esc) >= PATH_MAX) */
-	html_escape(res->uri, esc, MIN(PATH_MAX, sizeof(esc)));
-	if (dprintf(fd,
-	            "<!DOCTYPE html>\n<html>\n\t<head>"
-	            "<title>Index of %s</title></head>\n"
-	            "\t<body>\n\t\t<a href=\"..\">..</a>",
-	            esc) < 0) {
-		ret = S_REQUEST_TIMEOUT;
-		goto cleanup;
+	if (*progress == 0) {
+		/* write listing header (sizeof(esc) >= PATH_MAX) */
+		html_escape(res->uri, esc, MIN(PATH_MAX, sizeof(esc)));
+		if (buffer_appendf(buf,
+		                   "<!DOCTYPE html>\n<html>\n\t<head>"
+		                   "<title>Index of %s</title></head>\n"
+		                   "\t<body>\n\t\t<a href=\"..\">..</a>",
+		                   esc) < 0) {
+			ret = S_REQUEST_TIMEOUT;
+			goto cleanup;
+		}
 	}
 
-	/* listing */
-	for (i = 0; i < (size_t)dirlen; i++) {
+	/* listing entries */
+	for (i = *progress; i < (size_t)dirlen; i++) {
 		/* skip hidden files, "." and ".." */
 		if (e[i]->d_name[0] == '.') {
 			continue;
@@ -117,20 +130,25 @@ data_send_dirlisting(int fd, const struct response *res)
 
 		/* entry line */
 		html_escape(e[i]->d_name, esc, sizeof(esc));
-		if (dprintf(fd, "<br />\n\t\t<a href=\"%s%s\">%s%s</a>",
-		            esc,
-		            (e[i]->d_type == DT_DIR) ? "/" : "",
-		            esc,
-		            suffix(e[i]->d_type)) < 0) {
+		if (buffer_appendf(buf,
+		                   "<br />\n\t\t<a href=\"%s%s\">%s%s</a>",
+		                   esc,
+		                   (e[i]->d_type == DT_DIR) ? "/" : "",
+		                   esc,
+		                   suffix(e[i]->d_type))) {
+			/* buffer full */
+			break;
+		}
+	}
+	*progress = i;
+
+	if (*progress == (size_t)dirlen) {
+		/* listing footer */
+		if (buffer_appendf(buf, "\n\t</body>\n</html>\n") < 0) {
 			ret = S_REQUEST_TIMEOUT;
 			goto cleanup;
 		}
-	}
-
-	/* listing footer */
-	if (dprintf(fd, "\n\t</body>\n</html>\n") < 0) {
-		ret = S_REQUEST_TIMEOUT;
-		goto cleanup;
+		(*progress)++;
 	}
 
 cleanup:
@@ -143,28 +161,40 @@ cleanup:
 }
 
 enum status
-data_send_error(int fd, const struct response *res)
+data_prepare_error_buf(const struct response *res, struct buffer *buf,
+                   size_t *progress)
 {
-	if (dprintf(fd,
-	            "<!DOCTYPE html>\n<html>\n\t<head>\n"
-	            "\t\t<title>%d %s</title>\n\t</head>\n\t<body>\n"
-	            "\t\t<h1>%d %s</h1>\n\t</body>\n</html>\n",
-	            res->status, status_str[res->status],
-		    res->status, status_str[res->status]) < 0) {
-		return S_REQUEST_TIMEOUT;
+	/* reset buffer */
+	memset(buf, 0, sizeof(*buf));
+
+	if (*progress == 0) {
+		/* write error body */
+		if (buffer_appendf(buf,
+		                   "<!DOCTYPE html>\n<html>\n\t<head>\n"
+		                   "\t\t<title>%d %s</title>\n\t</head>\n"
+		                   "\t<body>\n\t\t<h1>%d %s</h1>\n"
+		                   "\t</body>\n</html>\n",
+		                   res->status, status_str[res->status],
+			           res->status, status_str[res->status])) {
+			return S_INTERNAL_SERVER_ERROR;
+		}
+		(*progress)++;
 	}
 
 	return 0;
 }
 
 enum status
-data_send_file(int fd, const struct response *res)
+data_prepare_file_buf(const struct response *res, struct buffer *buf,
+                  size_t *progress)
 {
 	FILE *fp;
 	enum status ret = 0;
-	ssize_t bread, bwritten;
+	ssize_t r;
 	size_t remaining;
-	static char buf[BUFSIZ], *p;
+
+	/* reset buffer */
+	memset(buf, 0, sizeof(*buf));
 
 	/* open file */
 	if (!(fp = fopen(res->path, "r"))) {
@@ -172,33 +202,26 @@ data_send_file(int fd, const struct response *res)
 		goto cleanup;
 	}
 
-	/* seek to lower bound */
-	if (fseek(fp, res->file.lower, SEEK_SET)) {
+	/* seek to lower bound + progress */
+	if (fseek(fp, res->file.lower + *progress, SEEK_SET)) {
 		ret = S_INTERNAL_SERVER_ERROR;
 		goto cleanup;
 	}
 
-	/* write data until upper bound is hit */
-	remaining = res->file.upper - res->file.lower + 1;
-
-	while ((bread = fread(buf, 1, MIN(sizeof(buf),
-	                      remaining), fp))) {
-		if (bread < 0) {
+	/* read data into buf */
+	remaining = res->file.upper - res->file.lower + 1 - *progress;
+	while ((r = fread(buf->data + buf->len, 1,
+	                  MIN(sizeof(buf->data) - buf->len,
+			  remaining), fp))) {
+		if (r < 0) {
 			ret = S_INTERNAL_SERVER_ERROR;
 			goto cleanup;
 		}
-		remaining -= bread;
-		p = buf;
-		while (bread > 0) {
-			bwritten = write(fd, p, bread);
-			if (bwritten <= 0) {
-				ret = S_REQUEST_TIMEOUT;
-				goto cleanup;
-			}
-			bread -= bwritten;
-			p += bwritten;
-		}
+		buf->len += r;
+		*progress += r;
+		remaining -= r;
 	}
+
 cleanup:
 	if (fp) {
 		fclose(fp);

@@ -1,5 +1,8 @@
-#define HEADER_MAX 4096
-#define FIELD_MAX  200
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#define BUFFER_SIZE 4096
+#define FIELD_MAX   200
 
 /* mime-types */
 static const struct {
@@ -32,3 +35,5 @@ static const struct {
 	{ "ogv",   "video/ogg" },
 	{ "webm",  "video/webm" },
 };
+
+#endif /* CONFIG_H */

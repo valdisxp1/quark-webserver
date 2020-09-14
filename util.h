@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <time.h>
 
-#include "arg.h"
+#include "config.h"
 
 /* main server struct */
 struct vhost {
@@ -34,6 +34,13 @@ struct server {
 	size_t map_len;
 };
 
+/* general purpose buffer */
+struct buffer {
+	char data[BUFFER_SIZE];
+	size_t len;
+	size_t off;
+};
+
 #undef MIN
 #define MIN(x,y)  ((x) < (y) ? (x) : (y))
 #undef MAX
@@ -55,5 +62,7 @@ int prepend(char *, size_t, const char *);
 
 void *reallocarray(void *, size_t, size_t);
 long long strtonum(const char *, long long, long long, const char **);
+
+int buffer_appendf(struct buffer *, const char *, ...);
 
 #endif /* UTIL_H */

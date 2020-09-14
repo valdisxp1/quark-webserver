@@ -8,9 +8,9 @@ COMPONENTS = data http sock util
 
 all: quark
 
-data.o: data.c data.h util.h http.h config.mk
-http.o: http.c http.h util.h http.h data.h config.h config.mk
-main.o: main.c util.h sock.h http.h arg.h config.h config.mk
+data.o: data.c data.h http.h util.h config.mk
+http.o: http.c config.h http.h util.h config.mk
+main.o: main.c arg.h data.h http.h sock.h util.h config.mk
 sock.o: sock.c sock.h util.h config.mk
 util.o: util.c util.h config.mk
 

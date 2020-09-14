@@ -17,7 +17,6 @@
 #include <unistd.h>
 
 #include "config.h"
-#include "data.h"
 #include "http.h"
 #include "util.h"
 
@@ -58,42 +57,68 @@ const char *res_field_str[] = {
 	[RES_CONTENT_TYPE]   = "Content-Type",
 };
 
-enum status (* const body_fct[])(int, const struct response *) = {
-	[RESTYPE_ERROR]      = data_send_error,
-	[RESTYPE_FILE]       = data_send_file,
-	[RESTYPE_DIRLISTING] = data_send_dirlisting,
-};
-
 enum status
-http_send_header(int fd, const struct response *res)
+http_prepare_header_buf(const struct response *res, struct buffer *buf)
 {
-	char t[FIELD_MAX];
+	char tstmp[FIELD_MAX];
 	size_t i;
 
-	if (timestamp(t, sizeof(t), time(NULL))) {
-		return S_INTERNAL_SERVER_ERROR;
+	/* reset buffer */
+	memset(buf, 0, sizeof(*buf));
+
+	/* generate timestamp */
+	if (timestamp(tstmp, sizeof(tstmp), time(NULL))) {
+		goto err;
 	}
 
-	if (dprintf(fd,
-	            "HTTP/1.1 %d %s\r\n"
-	            "Date: %s\r\n"
-	            "Connection: close\r\n",
-	            res->status, status_str[res->status], t) < 0) {
-		return S_REQUEST_TIMEOUT;
+	/* write data */
+	if (buffer_appendf(buf,
+	                   "HTTP/1.1 %d %s\r\n"
+	                   "Date: %s\r\n"
+	                   "Connection: close\r\n",
+	                   res->status, status_str[res->status], tstmp)) {
+		goto err;
 	}
 
 	for (i = 0; i < NUM_RES_FIELDS; i++) {
-		if (res->field[i][0] != '\0') {
-			if (dprintf(fd, "%s: %s\r\n", res_field_str[i],
-			            res->field[i]) < 0) {
-				return S_REQUEST_TIMEOUT;
-			}
+		if (res->field[i][0] != '\0' &&
+		    buffer_appendf(buf, "%s: %s\r\n", res_field_str[i],
+		                   res->field[i])) {
+			goto err;
 		}
 	}
 
-	if (dprintf(fd, "\r\n") < 0) {
-		return S_REQUEST_TIMEOUT;
+	if (buffer_appendf(buf, "\r\n")) {
+		goto err;
 	}
+
+	return 0;
+err:
+	memset(buf, 0, sizeof(*buf));
+	return S_INTERNAL_SERVER_ERROR;
+}
+
+enum status
+http_send_buf(int fd, struct buffer *buf)
+{
+	size_t remaining;
+	ssize_t r;
+
+	if (buf == NULL || buf->off > sizeof(buf->data)) {
+		return S_INTERNAL_SERVER_ERROR;
+	}
+
+	remaining = buf->len - buf->off;
+	while (remaining > 0) {
+		if ((r = write(fd, buf->data + buf->off, remaining)) <= 0) {
+			return S_REQUEST_TIMEOUT;
+		}
+		buf->off += r;
+		remaining -= r;
+	}
+
+	/* set off to 0 to indicate that we have finished */
+	buf->off = 0;
 
 	return 0;
 }
@@ -117,38 +142,48 @@ decode(const char src[PATH_MAX], char dest[PATH_MAX])
 }
 
 enum status
-http_recv_header(int fd, char *h, size_t hsiz, size_t *off)
+http_recv_header(int fd, struct buffer *buf)
 {
+	enum status s;
 	ssize_t r;
 
-	if (h == NULL || off == NULL || *off > hsiz) {
-		return S_INTERNAL_SERVER_ERROR;
+	if (buf->off > sizeof(buf->data)) {
+		s = S_INTERNAL_SERVER_ERROR;
+		goto err;
 	}
 
 	while (1) {
-		if ((r = read(fd, h + *off, hsiz - *off)) <= 0) {
-			return S_REQUEST_TIMEOUT;
+		if ((r = read(fd, buf->data + buf->off,
+		              sizeof(buf->data) - buf->off)) <= 0) {
+			s = S_REQUEST_TIMEOUT;
+			goto err;
 		}
-		*off += r;
+		buf->off += r;
 
 		/* check if we are done (header terminated) */
-		if (*off >= 4 && !memcmp(h + *off - 4, "\r\n\r\n", 4)) {
+		if (buf->off >= 4 && !memcmp(buf->data + buf->off - 4,
+		                             "\r\n\r\n", 4)) {
 			break;
 		}
 
 		/* buffer is full or read over, but header is not terminated */
-		if (r == 0 || *off == hsiz) {
-			return S_REQUEST_TOO_LARGE;
+		if (r == 0 || buf->off == sizeof(buf->data)) {
+			s = S_REQUEST_TOO_LARGE;
+			goto err;
 		}
 	}
 
 	/* header is complete, remove last \r\n and null-terminate */
-	h[*off - 2] = '\0';
+	buf->data[buf->off - 2] = '\0';
 
-	/* set *off to 0 to indicate we are finished */
-	*off = 0;
+	/* set buffer length to length and offset to 0 to indicate success */
+	buf->len = buf->off - 2;
+	buf->off = 0;
 
 	return 0;
+err:
+	memset(buf, 0, sizeof(*buf));
+	return s;
 }
 
 enum status
@@ -839,17 +874,4 @@ http_prepare_error_response(const struct request *req,
 			res->status = S_INTERNAL_SERVER_ERROR;
 		}
 	}
-}
-
-enum status
-http_send_body(int fd, const struct response *res,
-               const struct request *req)
-{
-	enum status s;
-
-	if (req->method == M_GET && (s = body_fct[res->type](fd, res))) {
-		return s;
-	}
-
-	return 0;
 }

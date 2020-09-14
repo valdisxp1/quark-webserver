@@ -16,6 +16,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "arg.h"
 #include "data.h"
 #include "http.h"
 #include "sock.h"
@@ -53,24 +54,66 @@ serve(struct connection *c, const struct server *srv)
 
 	/* set connection timeout */
 	if (sock_set_timeout(c->fd, 30)) {
-		goto cleanup;
+		warn("sock_set_timeout: Failed");
 	}
 
-	/* handle request */
-	if ((s = http_recv_header(c->fd, c->header, LEN(c->header), &c->off)) ||
-	    (s = http_parse_header(c->header, &c->req))) {
+	/* read header */
+	memset(&c->buf, 0, sizeof(c->buf));
+	if ((s = http_recv_header(c->fd, &c->buf))) {
 		http_prepare_error_response(&c->req, &c->res, s);
-	} else {
-		http_prepare_response(&c->req, &c->res, srv);
+		goto response;
 	}
 
-	if ((s = http_send_header(c->fd, &c->res)) ||
-	    (s = http_send_body(c->fd, &c->res, &c->req))) {
+	/* parse header */
+	if ((s = http_parse_header(c->buf.data, &c->req))) {
+		http_prepare_error_response(&c->req, &c->res, s);
+		goto response;
+	}
+
+	/* prepare response struct */
+	http_prepare_response(&c->req, &c->res, srv);
+
+response:
+	/* generate response header */
+	if ((s = http_prepare_header_buf(&c->res, &c->buf))) {
+		http_prepare_error_response(&c->req, &c->res, s);
+		if ((s = http_prepare_header_buf(&c->res, &c->buf))) {
+			/* couldn't generate the header, we failed for good */
+			c->res.status = s;
+			goto err;
+		}
+	}
+
+	/* send header */
+	if ((s = http_send_buf(c->fd, &c->buf))) {
 		c->res.status = s;
+		goto err;
 	}
 
+	/* send body */
+	if (c->req.method == M_GET) {
+		for (;;) {
+			/* fill buffer with body data */
+			if ((s = data_fct[c->res.type](&c->res, &c->buf,
+			                               &c->progress))) {
+				c->res.status = s;
+				goto err;
+			}
+
+			/* if done, exit loop */
+			if (c->buf.len == 0) {
+				break;
+			}
+
+			/* send buffer */
+			if ((s = http_send_buf(c->fd, &c->buf))) {
+				c->res.status = s;
+			}
+		}
+	}
+err:
 	logmsg(c);
-cleanup:
+
 	/* clean up and finish */
 	shutdown(c->fd, SHUT_RD);
 	shutdown(c->fd, SHUT_WR);

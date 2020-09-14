@@ -182,3 +182,27 @@ reallocarray(void *optr, size_t nmemb, size_t size)
 	}
 	return realloc(optr, size * nmemb);
 }
+
+int
+buffer_appendf(struct buffer *buf, const char *suffixfmt, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, suffixfmt);
+	ret = vsnprintf(buf->data + buf->len,
+	                sizeof(buf->data) - buf->len, suffixfmt, ap);
+	va_end(ap);
+
+	if (ret < 0 || (size_t)ret >= (sizeof(buf->data) - buf->len)) {
+		/* truncation occured, discard and error out */
+		memset(buf->data + buf->len, 0,
+		       sizeof(buf->data) - buf->len);
+		return 1;
+	}
+
+	/* increase buffer length by number of bytes written */
+	buf->len += ret;
+
+	return 0;
+}
