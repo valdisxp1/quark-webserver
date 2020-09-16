@@ -51,65 +51,97 @@ static void
 serve(struct connection *c, const struct server *srv)
 {
 	enum status s;
+	int done;
 
 	/* set connection timeout */
 	if (sock_set_timeout(c->fd, 30)) {
 		warn("sock_set_timeout: Failed");
 	}
 
-	/* read header */
-	memset(&c->buf, 0, sizeof(c->buf));
-	if ((s = http_recv_header(c->fd, &c->buf))) {
-		http_prepare_error_response(&c->req, &c->res, s);
-		goto response;
-	}
+	switch (c->state) {
+	case C_VACANT:
+		/*
+		 * we were passed a "fresh" connection which should now
+		 * try to receive the header, reset buf beforehand
+		 */
+		memset(&c->buf, 0, sizeof(c->buf));
 
-	/* parse header */
-	if ((s = http_parse_header(c->buf.data, &c->req))) {
-		http_prepare_error_response(&c->req, &c->res, s);
-		goto response;
-	}
-
-	/* prepare response struct */
-	http_prepare_response(&c->req, &c->res, srv);
-
-response:
-	/* generate response header */
-	if ((s = http_prepare_header_buf(&c->res, &c->buf))) {
-		http_prepare_error_response(&c->req, &c->res, s);
-		if ((s = http_prepare_header_buf(&c->res, &c->buf))) {
-			/* couldn't generate the header, we failed for good */
-			c->res.status = s;
-			goto err;
+		c->state = C_RECV_HEADER;
+		/* fallthrough */
+	case C_RECV_HEADER:
+		/* receive header */
+		done = 0;
+		if ((s = http_recv_header(c->fd, &c->buf, &done))) {
+			http_prepare_error_response(&c->req, &c->res, s);
+			goto response;
 		}
-	}
+		if (!done) {
+			/* not done yet */
+			return;
+		}
 
-	/* send header */
-	if ((s = http_send_buf(c->fd, &c->buf))) {
-		c->res.status = s;
-		goto err;
-	}
+		/* parse header */
+		if ((s = http_parse_header(c->buf.data, &c->req))) {
+			http_prepare_error_response(&c->req, &c->res, s);
+			goto response;
+		}
 
-	/* send body */
-	if (c->req.method == M_GET) {
-		for (;;) {
-			/* fill buffer with body data */
-			if ((s = data_fct[c->res.type](&c->res, &c->buf,
-			                               &c->progress))) {
+		/* prepare response struct */
+		http_prepare_response(&c->req, &c->res, srv);
+response:
+		/* generate response header */
+		if ((s = http_prepare_header_buf(&c->res, &c->buf))) {
+			http_prepare_error_response(&c->req, &c->res, s);
+			if ((s = http_prepare_header_buf(&c->res, &c->buf))) {
+				/* couldn't generate the header, we failed for good */
 				c->res.status = s;
 				goto err;
 			}
-
-			/* if done, exit loop */
-			if (c->buf.len == 0) {
-				break;
-			}
-
-			/* send buffer */
-			if ((s = http_send_buf(c->fd, &c->buf))) {
-				c->res.status = s;
-			}
 		}
+
+		c->state = C_SEND_HEADER;
+		/* fallthrough */
+	case C_SEND_HEADER:
+		if ((s = http_send_buf(c->fd, &c->buf))) {
+			c->res.status = s;
+			goto err;
+		}
+		if (c->buf.len > 0) {
+			/* not done yet */
+			return;
+		}
+
+		c->state = C_SEND_BODY;
+		/* fallthrough */
+	case C_SEND_BODY:
+		if (c->req.method == M_GET) {
+			if (c->buf.len == 0) {
+				/* fill buffer with body data */
+				if ((s = data_fct[c->res.type](&c->res, &c->buf,
+				                               &c->progress))) {
+					/* too late to do any real error handling */
+					c->res.status = s;
+					goto err;
+				}
+
+				/* if the buffer remains empty, we are done */
+				if (c->buf.len == 0) {
+					break;
+				}
+			} else {
+				/* send buffer */
+				if ((s = http_send_buf(c->fd, &c->buf))) {
+					/* too late to do any real error handling */
+					c->res.status = s;
+					goto err;
+				}
+			}
+			return;
+		}
+		break;
+	default:
+		warn("serve: invalid connection state");
+		return;
 	}
 err:
 	logmsg(c);
@@ -118,6 +150,7 @@ err:
 	shutdown(c->fd, SHUT_RD);
 	shutdown(c->fd, SHUT_WR);
 	close(c->fd);
+	c->state = C_VACANT;
 }
 
 static void
@@ -427,7 +460,9 @@ main(int argc, char *argv[])
 			/* fork and handle */
 			switch (fork()) {
 			case 0:
-				serve(&c, &srv);
+				do {
+					serve(&c, &srv);
+				} while (c.state != C_VACANT);
 				exit(0);
 				break;
 			case -1:
