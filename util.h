@@ -38,7 +38,6 @@ struct server {
 struct buffer {
 	char data[BUFFER_SIZE];
 	size_t len;
-	size_t off;
 };
 
 #undef MIN

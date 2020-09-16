@@ -101,24 +101,19 @@ err:
 enum status
 http_send_buf(int fd, struct buffer *buf)
 {
-	size_t remaining;
 	ssize_t r;
 
-	if (buf == NULL || buf->off > sizeof(buf->data)) {
+	if (buf == NULL) {
 		return S_INTERNAL_SERVER_ERROR;
 	}
 
-	remaining = buf->len - buf->off;
-	while (remaining > 0) {
-		if ((r = write(fd, buf->data + buf->off, remaining)) <= 0) {
+	while (buf->len > 0) {
+		if ((r = write(fd, buf->data, buf->len)) <= 0) {
 			return S_REQUEST_TIMEOUT;
 		}
-		buf->off += r;
-		remaining -= r;
+		memmove(buf->data, buf->data + r, buf->len - r);
+		buf->len -= r;
 	}
-
-	/* set off to 0 to indicate that we have finished */
-	buf->off = 0;
 
 	return 0;
 }
@@ -142,43 +137,35 @@ decode(const char src[PATH_MAX], char dest[PATH_MAX])
 }
 
 enum status
-http_recv_header(int fd, struct buffer *buf)
+http_recv_header(int fd, struct buffer *buf, int *done)
 {
 	enum status s;
 	ssize_t r;
 
-	if (buf->off > sizeof(buf->data)) {
-		s = S_INTERNAL_SERVER_ERROR;
-		goto err;
-	}
-
 	while (1) {
-		if ((r = read(fd, buf->data + buf->off,
-		              sizeof(buf->data) - buf->off)) <= 0) {
+		if ((r = read(fd, buf->data + buf->len,
+		              sizeof(buf->data) - buf->len)) <= 0) {
 			s = S_REQUEST_TIMEOUT;
 			goto err;
 		}
-		buf->off += r;
+		buf->len += r;
 
 		/* check if we are done (header terminated) */
-		if (buf->off >= 4 && !memcmp(buf->data + buf->off - 4,
+		if (buf->len >= 4 && !memcmp(buf->data + buf->len - 4,
 		                             "\r\n\r\n", 4)) {
 			break;
 		}
 
 		/* buffer is full or read over, but header is not terminated */
-		if (r == 0 || buf->off == sizeof(buf->data)) {
+		if (r == 0 || buf->len == sizeof(buf->data)) {
 			s = S_REQUEST_TOO_LARGE;
 			goto err;
 		}
 	}
 
-	/* header is complete, remove last \r\n and null-terminate */
-	buf->data[buf->off - 2] = '\0';
-
-	/* set buffer length to length and offset to 0 to indicate success */
-	buf->len = buf->off - 2;
-	buf->off = 0;
+	/* header is complete, remove last \r\n and set done */
+	buf->len -= 2;
+	*done = 1;
 
 	return 0;
 err:

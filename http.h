@@ -101,7 +101,7 @@ struct connection {
 
 enum status http_prepare_header_buf(const struct response *, struct buffer *);
 enum status http_send_buf(int, struct buffer *);
-enum status http_recv_header(int, struct buffer *);
+enum status http_recv_header(int, struct buffer *, int *);
 enum status http_parse_header(const char *, struct request *);
 void http_prepare_response(const struct request *, struct response *,
                            const struct server *);
