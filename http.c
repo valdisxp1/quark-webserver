@@ -109,7 +109,17 @@ http_send_buf(int fd, struct buffer *buf)
 
 	while (buf->len > 0) {
 		if ((r = write(fd, buf->data, buf->len)) <= 0) {
-			return S_REQUEST_TIMEOUT;
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				/*
+				 * socket is blocking, return normally.
+				 * given the buffer still contains data,
+				 * this indicates to the caller that we
+				 * have been interrupted.
+				 */
+				return 0;
+			} else {
+				return S_REQUEST_TIMEOUT;
+			}
 		}
 		memmove(buf->data, buf->data + r, buf->len - r);
 		buf->len -= r;
@@ -145,8 +155,17 @@ http_recv_header(int fd, struct buffer *buf, int *done)
 	while (1) {
 		if ((r = read(fd, buf->data + buf->len,
 		              sizeof(buf->data) - buf->len)) <= 0) {
-			s = S_REQUEST_TIMEOUT;
-			goto err;
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				/*
+				 * socket is drained, return normally,
+				 * but set done to zero
+				 */
+				*done = 0;
+				return 0;
+			} else {
+				s = S_REQUEST_TIMEOUT;
+				goto err;
+			}
 		}
 		buf->len += r;
 
@@ -181,7 +200,7 @@ http_parse_header(const char *h, struct request *req)
 	const char *p, *q;
 	char *m, *n;
 
-	/* empty all fields */
+	/* empty the request struct */
 	memset(req, 0, sizeof(*req));
 
 	/*
