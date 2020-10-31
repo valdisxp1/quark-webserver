@@ -3,6 +3,7 @@
 #include <grp.h>
 #include <limits.h>
 #include <netinet/in.h>
+#include <pthread.h>
 #include <pwd.h>
 #include <regex.h>
 #include <signal.h>
@@ -19,6 +20,7 @@
 #include "arg.h"
 #include "data.h"
 #include "http.h"
+#include "queue.h"
 #include "sock.h"
 #include "util.h"
 
@@ -48,15 +50,19 @@ logmsg(const struct connection *c)
 }
 
 static void
-serve(struct connection *c, const struct server *srv)
+close_connection(struct connection *c)
+{
+	if (c != NULL) {
+		close(c->fd);
+		memset(c, 0, sizeof(*c));
+	}
+}
+
+static void
+serve_connection(struct connection *c, const struct server *srv)
 {
 	enum status s;
 	int done;
-
-	/* set connection timeout */
-	if (sock_set_timeout(c->fd, 30)) {
-		warn("sock_set_timeout: Failed");
-	}
 
 	switch (c->state) {
 	case C_VACANT:
@@ -145,12 +151,212 @@ response:
 	}
 err:
 	logmsg(c);
+	close_connection(c);
+}
 
-	/* clean up and finish */
-	shutdown(c->fd, SHUT_RD);
-	shutdown(c->fd, SHUT_WR);
-	close(c->fd);
-	c->state = C_VACANT;
+struct connection *
+accept_connection(int insock, struct connection *connection,
+                  size_t nslots)
+{
+	struct connection *c = NULL;
+	size_t j;
+
+	/* find vacant connection (i.e. one with no fd assigned to it) */
+	for (j = 0; j < nslots; j++) {
+		if (connection[j].fd == 0) {
+			c = &connection[j];
+			break;
+		}
+	}
+	if (j == nslots) {
+		/* nothing available right now, return without accepting */
+
+		/* 
+		 * NOTE: This is currently still not the best option, but
+		 * at least we now have control over it and can reap a
+		 * connection from our pool instead of previously when
+		 * we were forking and were more or less on our own in
+		 * each process
+		 */
+		return NULL;
+	}
+
+	/* accept connection */
+	if ((c->fd = accept(insock, (struct sockaddr *)&c->ia,
+	                    &(socklen_t){sizeof(c->ia)})) < 0) {
+		if (errno != EAGAIN && errno != EWOULDBLOCK) {
+			/* not much we can do here */
+			warn("accept:");
+		}
+		return NULL;
+	}
+
+	/* set socket to non-blocking mode */
+	if (sock_set_nonblocking(c->fd)) {
+		/* we can't allow blocking sockets */
+		return NULL;
+	}
+
+	return c;
+}
+
+struct worker_data {
+	int insock;
+	size_t nslots;
+	const struct server *srv;
+};
+
+static void *
+thread_method(void *data)
+{
+	queue_event *event = NULL;
+	struct connection *connection, *c;
+	struct worker_data *d = (struct worker_data *)data;
+	int qfd, nready, fd;
+	size_t i;
+
+	/* allocate connections */
+	if (!(connection = calloc(d->nslots, sizeof(*connection)))) {
+		die("calloc:");
+	}
+
+	/* create event queue */
+	if ((qfd = queue_create()) < 0) {
+		exit(1);
+	}
+
+	/* add insock to the interest list */
+	if (queue_add_fd(qfd, d->insock, QUEUE_EVENT_IN, 1, NULL) < 0) {
+		exit(1);
+	}
+
+	/* allocate event array */
+	if (!(event = reallocarray(event, d->nslots, sizeof(*event)))) {
+		die("reallocarray:");
+	}
+
+	for (;;) {
+		/* wait for new activity */
+		if ((nready = queue_wait(qfd, event, d->nslots)) < 0) {
+			exit(1);
+		}
+
+		/* handle events */
+		for (i = 0; i < (size_t)nready; i++) {
+			if (event[i].events & (EPOLLERR | EPOLLHUP)) {
+				fd = queue_event_get_fd(&event[i]);
+
+				if (fd != d->insock) {
+					memset(queue_event_get_ptr(&event[i]),
+					       0, sizeof(struct connection));
+				}
+
+				printf("dropped a connection\n");
+
+				continue;
+			}
+
+			if (queue_event_get_fd(&event[i]) == d->insock) {
+				/* add new connection to the interest list */
+				if (!(c = accept_connection(d->insock,
+				                            connection,
+				                            d->nslots))) {
+					/*
+					 * the socket is either blocking
+					 * or something failed.
+					 * In both cases, we just carry on
+					 */
+					continue;
+				}
+
+				/*
+				 * add event to the interest list
+				 * (we want IN, because we start
+				 * with receiving the header)
+				 */
+				if (queue_add_fd(qfd, c->fd,
+				                 QUEUE_EVENT_IN,
+						 0, c) < 0) {
+					/* not much we can do here */
+					continue;
+				}
+			} else {
+				c = queue_event_get_ptr(&event[i]);
+
+				/* serve existing connection */
+				serve_connection(c, d->srv);
+
+				if (c->fd == 0) {
+					/* we are done */
+					continue;
+				}
+
+				/*
+				 * rearm the event based on the state
+				 * we are "stuck" at
+				 */
+				switch(c->state) {
+				case C_RECV_HEADER:
+					if (queue_mod_fd(qfd, c->fd,
+					                 QUEUE_EVENT_IN,
+					                 c) < 0) {
+						close_connection(c);
+						break;
+					}
+					break;
+				case C_SEND_HEADER:
+				case C_SEND_BODY:
+					if (queue_mod_fd(qfd, c->fd,
+					                 QUEUE_EVENT_OUT,
+					                 c) < 0) {
+						close_connection(c);
+						break;
+					}
+					break;
+				default:
+					break;
+				}
+			}
+		}
+	}
+
+	return NULL;
+}
+
+static void
+handle_connections(int *insock, size_t nthreads, size_t nslots,
+                   const struct server *srv)
+{
+	pthread_t *thread = NULL;
+	struct worker_data *d = NULL;
+	size_t i;
+
+	/* allocate worker_data structs */
+	if (!(d = reallocarray(d, nthreads, sizeof(*d)))) {
+		die("reallocarray:");
+	}
+	for (i = 0; i < nthreads; i++) {
+		d[i].insock = insock[i];
+		d[i].nslots = nslots;
+		d[i].srv = srv;
+	}
+
+	/* allocate and initialize thread pool */
+	if (!(thread = reallocarray(thread, nthreads, sizeof(*thread)))) {
+		die("reallocarray:");
+	}
+	for (i = 0; i < nthreads; i++) {
+		if (pthread_create(&thread[i], NULL, thread_method, &d[i]) != 0) {
+			die("pthread_create:");
+		}
+	}
+
+	/* wait for threads */
+	for (i = 0; i < nthreads; i++) {
+		if ((errno = pthread_join(thread[i], NULL))) {
+			warn("pthread_join:");
+		}
+	}
 }
 
 static void
@@ -274,12 +480,13 @@ main(int argc, char *argv[])
 		.docindex = "index.html",
 	};
 	size_t i;
-	int insock, status = 0;
+	int *insock = NULL, status = 0;
 	const char *err;
 	char *tok[4];
 
 	/* defaults */
-	int maxnprocs = 512;
+	size_t nthreads = 4;
+	size_t nslots = 64;
 	char *servedir = ".";
 	char *user = "nobody";
 	char *group = "nogroup";
@@ -308,15 +515,23 @@ main(int argc, char *argv[])
 			usage();
 		}
 		if (!(srv.map = reallocarray(srv.map, ++srv.map_len,
-		                           sizeof(struct map)))) {
+		                             sizeof(struct map)))) {
 			die("reallocarray:");
 		}
 		srv.map[srv.map_len - 1].from  = tok[0];
 		srv.map[srv.map_len - 1].to    = tok[1];
 		srv.map[srv.map_len - 1].chost = tok[2];
 		break;
-	case 'n':
-		maxnprocs = strtonum(EARGF(usage()), 1, INT_MAX, &err);
+	case 's':
+		err = NULL;
+		nslots = strtonum(EARGF(usage()), 1, INT_MAX, &err);
+		if (err) {
+			die("strtonum '%s': %s", EARGF(usage()), err);
+		}
+		break;
+	case 't':
+		err = NULL;
+		nthreads = strtonum(EARGF(usage()), 1, INT_MAX, &err);
 		if (err) {
 			die("strtonum '%s': %s", EARGF(usage()), err);
 		}
@@ -371,8 +586,8 @@ main(int argc, char *argv[])
 		}
 	}
 
-	/* raise the process limit */
-	rlim.rlim_cur = rlim.rlim_max = maxnprocs;
+	/* raise the process limit (2 + nthreads) */
+	rlim.rlim_cur = rlim.rlim_max = 2 + nthreads;
 	if (setrlimit(RLIMIT_NPROC, &rlim) < 0) {
 		die("setrlimit RLIMIT_NPROC:");
 	}
@@ -394,9 +609,20 @@ main(int argc, char *argv[])
 
 	handlesignals(sigcleanup);
 
-	/* bind socket */
-	insock = udsname ? sock_get_uds(udsname, pwd->pw_uid, grp->gr_gid) :
-	                   sock_get_ips(srv.host, srv.port);
+	/* create a nonblocking listening socket for each thread */
+	if (!(insock = reallocarray(insock, nthreads, sizeof(*insock)))) {
+		die("reallocarray:");
+	}
+	if (udsname ? sock_get_uds_arr(udsname, pwd->pw_uid, grp->gr_gid,
+	                               insock, nthreads) :
+	              sock_get_ips_arr(srv.host, srv.port, insock, nthreads)) {
+		return 1;
+	}
+	for (i = 0; i < nthreads; i++) {
+		if (sock_set_nonblocking(insock[i])) {
+			return 1;
+		}
+	}
 
 	switch (fork()) {
 	case -1:
@@ -409,6 +635,9 @@ main(int argc, char *argv[])
 		/* reap children automatically */
 		if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
 			die("signal: Failed to set SIG_IGN on SIGCHLD");
+		}
+		if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+			die("signal: Failed to set SIG_IGN on SIGPIPE");
 		}
 
 		/* limit ourselves to reading the servedir and block further unveils */
@@ -448,31 +677,8 @@ main(int argc, char *argv[])
 		}
 
 		/* accept incoming connections */
-		while (1) {
-			struct connection c = { 0 };
+		handle_connections(insock, nthreads, nslots, &srv);
 
-			if ((c.fd = accept(insock, (struct sockaddr *)&c.ia,
-			                   &(socklen_t){sizeof(c.ia)})) < 0) {
-				warn("accept:");
-				continue;
-			}
-
-			/* fork and handle */
-			switch (fork()) {
-			case 0:
-				do {
-					serve(&c, &srv);
-				} while (c.state != C_VACANT);
-				exit(0);
-				break;
-			case -1:
-				warn("fork:");
-				/* fallthrough */
-			default:
-				/* close the connection in the parent */
-				close(c.fd);
-			}
-		}
 		exit(0);
 	default:
 		/* limit ourselves even further while we are waiting */

@@ -1,4 +1,4 @@
-.Dd 2020-08-23
+.Dd 2020-09-27
 .Dt QUARK 1
 .Os suckless.org
 .Sh NAME
@@ -10,7 +10,8 @@
 .Op Fl h Ar host
 .Op Fl u Ar user
 .Op Fl g Ar group
-.Op Fl n Ar num
+.Op Fl s Ar num
+.Op Fl t Ar num
 .Op Fl d Ar dir
 .Op Fl l
 .Op Fl i Ar file
@@ -21,7 +22,8 @@
 .Op Fl p Ar port
 .Op Fl u Ar user
 .Op Fl g Ar group
-.Op Fl n Ar num
+.Op Fl s Ar num
+.Op Fl t Ar num
 .Op Fl d Ar dir
 .Op Fl l
 .Op Fl i Ar file
@@ -80,10 +82,6 @@ optionally limited to the canonical virtual host
 If no virtual hosts are given,
 .Pa chost
 is ignored.
-.It Fl n Ar num
-Set the maximum number of threads to
-.Ar num .
-The default is 512.
 .It Fl p Ar port
 In host mode, listen on port
 .Ar port
@@ -96,6 +94,14 @@ redirects on non-standard ports.
 Create the UNIX-domain socket
 .Ar file ,
 listen on it for incoming connections and remove it on exit.
+.It Fl s Ar num
+Set the number of connection slots per worker thread to
+.Ar num .
+The default is 64.
+.It Fl t Ar num
+Set the number of worker threads to
+.Ar num .
+The default is 4.
 .It Fl u Ar user
 Set user ID when dropping privileges,
 and in socket mode the user of the socket file,

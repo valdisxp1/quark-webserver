@@ -22,7 +22,9 @@ queue_create(void)
 			warn("epoll_create1:");
 		}
 	#else
-
+		if ((qfd = kqueue()) < 0) {
+			warn("kqueue:");
+		}
 	#endif
 
 	return qfd;
@@ -78,7 +80,27 @@ queue_add_fd(int qfd, int fd, enum queue_event_type t, int shared,
 			return 1;
 		}
 	#else
+		kevent e;
+		int events;
 
+		/* prepare event flag */
+		event = (shared) ? 0 : EV_CLEAR;
+
+		switch (t) {
+		case QUEUE_EVENT_IN:
+			events |= EVFILT_READ;
+			break;
+		case QUEUE_EVENT_OUT:
+			events |= EVFILT_WRITE;
+			break;
+		}
+
+		EV_SET(&e, fd, events, EV_ADD, 0, 0, 0);
+
+		if (kevent(qfd, &e, 1, NULL, 0, NULL) < 0) {
+			warn("kevent:");
+			return 1;
+		}
 	#endif
 
 	return 0;
@@ -90,8 +112,9 @@ queue_mod_fd(int qfd, int fd, enum queue_event_type t, const void *data)
 	#ifdef __linux__
 		struct epoll_event e;
 
-		/* set event flag */
+		/* set event flag (only for non-shared fd's) */
 		e.events = EPOLLET;
+
 		switch (t) {
 		case QUEUE_EVENT_IN:
 			e.events |= EPOLLIN;
@@ -116,7 +139,26 @@ queue_mod_fd(int qfd, int fd, enum queue_event_type t, const void *data)
 			return 1;
 		}
 	#else
+		kevent e;
+		int events;
 
+		events = EV_CLEAR;
+
+		switch (t) {
+		case QUEUE_EVENT_IN:
+			events |= EVFILT_READ;
+			break;
+		case QUEUE_EVENT_OUT:
+			events |= EVFILT_WRITE;
+			break;
+		}
+
+		EV_SET(&e, fd, events, EV_ADD, 0, 0, 0);
+
+		if (kevent(qfd, &e, 1, NULL, 0, NULL) < 0) {
+			warn("kevent:");
+			return 1;
+		}
 	#endif
 
 	return 0;
@@ -133,7 +175,14 @@ queue_rem_fd(int qfd, int fd)
 			return 1;
 		}
 	#else
+		kevent e;
 
+		EV_SET(&e, fd, 0, EV_DELETE, 0, 0, 0);
+
+		if (kevent(qfd, &e, 1, NULL, 0, NULL) < 0) {
+			warn("kevent:");
+			return 1;
+		}
 	#endif
 
 	return 0;
@@ -150,7 +199,10 @@ queue_wait(int qfd, queue_event *e, size_t elen)
 			return -1;
 		}
 	#else
-
+		if ((nready = kevent(qfd, NULL, 0, e, elen, NULL) < 0) {
+			warn("kevent:");
+			return 1;
+		}
 	#endif
 
 	return nready;
@@ -162,7 +214,7 @@ queue_event_get_fd(const queue_event *e)
 	#ifdef __linux__
 		return e->data.fd;
 	#else
-
+		return e->ident;
 	#endif
 }
 
@@ -172,6 +224,6 @@ queue_event_get_ptr(const queue_event *e)
 	#ifdef __linux__
 		return e->data.ptr;
 	#else
-
+		return e->udata;
 	#endif
 }

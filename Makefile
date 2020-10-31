@@ -4,13 +4,13 @@
 
 include config.mk
 
-COMPONENTS = data http sock util
+COMPONENTS = data http queue sock util
 
 all: quark
 
 data.o: data.c data.h http.h util.h config.mk
 http.o: http.c config.h http.h util.h config.mk
-main.o: main.c arg.h data.h http.h sock.h util.h config.mk
+main.o: main.c arg.h data.h http.h queue.h sock.h util.h config.mk
 sock.o: sock.c sock.h util.h config.mk
 util.o: util.c util.h config.mk
 
