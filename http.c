@@ -491,10 +491,13 @@ parse_range(const char *str, size_t size, size_t *lower, size_t *upper)
 		 * last byte if 'last' is not given),
 		 * inclusively, and byte-numbering beginning at 0
 		 */
-		*lower = strtonum(first, 0, SIZE_MAX, &err);
+		*lower = strtonum(first, 0, MIN(SIZE_MAX, LLONG_MAX),
+		                  &err);
 		if (!err) {
 			if (last[0] != '\0') {
-				*upper = strtonum(last, 0, SIZE_MAX, &err);
+				*upper = strtonum(last, 0,
+				                  MIN(SIZE_MAX, LLONG_MAX),
+				                  &err);
 			} else {
 				*upper = size - 1;
 			}
@@ -526,7 +529,7 @@ parse_range(const char *str, size_t size, size_t *lower, size_t *upper)
 		 * use upper as a temporary storage for 'num',
 		 * as we know 'upper' is size - 1
 		 */
-		*upper = strtonum(last, 0, SIZE_MAX, &err);
+		*upper = strtonum(last, 0, MIN(SIZE_MAX, LLONG_MAX), &err);
 		if (err) {
 			return S_BAD_REQUEST;
 		}
