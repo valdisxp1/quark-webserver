@@ -26,6 +26,10 @@ clean:
 docker: quark
 	docker build -f Dockerfile.debian -t "quark:$(VERSION)-debian" .
 
+dockerhub: docker
+	docker tag "quark:$(VERSION)-debian" "valdisxp1/quark-webserver:$(VERSION)-debian"
+	docker push "valdisxp1/quark-webserver:$(VERSION)-debian"
+
 dist:
 	rm -rf "quark-$(VERSION)"
 	mkdir -p "quark-$(VERSION)"
