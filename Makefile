@@ -22,6 +22,9 @@ config.h:
 
 clean:
 	rm -f quark main.o $(COMPONENTS:=.o)
+	
+docker: quark
+	docker build -f Dockerfile.debian -t "quark:$(VERSION)-debian" .
 
 dist:
 	rm -rf "quark-$(VERSION)"
