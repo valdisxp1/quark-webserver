@@ -1,0 +1,3 @@
+*.o
+quark
+config.h
