@@ -1,5 +1,5 @@
 # quark version
-VERSION = 0
+VERSION = d0.1
 
 # Customize below to fit your system
 
