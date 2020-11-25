@@ -475,7 +475,7 @@ main(int argc, char *argv[])
 {
 	struct group *grp = NULL;
 	struct passwd *pwd = NULL;
-	struct rlimit rlim;
+	/* struct rlimit rlim; */
 	struct server srv = {
 		.docindex = "index.html",
 	};
@@ -587,10 +587,12 @@ main(int argc, char *argv[])
 	}
 
 	/* raise the process limit (2 + nthreads) */
+	/*
 	rlim.rlim_cur = rlim.rlim_max = 2 + nthreads;
 	if (setrlimit(RLIMIT_NPROC, &rlim) < 0) {
 		die("setrlimit RLIMIT_NPROC:");
 	}
+	*/
 
 	/* validate user and group */
 	errno = 0;
